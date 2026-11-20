@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.1 (2026-11-20)
+
+### What's new
+
+This is a small fix release. The checker that sf-mod-build runs on your zip was renamed from sfmodcheck to sf-mod-check, and sf-mod-build's own messages now use the new name and link. An old `sfmodcheck.exe` is still found and run, so nothing you set up before stops working.
+
+### Example
+
+When the checker isn't installed, `doctor` now points at the renamed project:
+
+    > sf-mod-build doctor
+    ...
+    WARNING  Checker: not found
+             what it is for: checks the finished zip (release check); without it the build still works, unchecked
+             how to get it: Get sf-mod-check (called sfmodcheck before its rename) from https://github.com/taosecurity/sf-mod-check/releases. Put it on PATH, or give it with --checker <exe>.
+    ...
+    RESULT: OK, ready to build (with a WARNING: see above)
+
+### Fixes
+
+- `doctor` and `check` linked the checker's old GitHub page (taosecurity/sfmodcheck). They now link https://github.com/taosecurity/sf-mod-check/releases.
+- The example in error messages about `--checker` now shows `sf-mod-check.exe` instead of `sfmodcheck.exe`.
+- The README's Example shows a build checked by sf-mod-check 0.9.0, with its current output.
+- The `dotnet new sfmod` template still pins BuildKit 0.4.0 and Mutagen 0.54.4, the versions this release was tested with.
+
+### Download
+
+Download `sf-mod-build.0.1.1.nupkg` (dotnet tool) or `sf-mod-build-0.1.1-win-x64.zip` (program), plus `sf-mod-build-template-0.1.1.zip` for the starter template, and check them against `SHA256SUMS`. The README's Install section has the steps.
+
 ## 0.1.0 (2026-11-19)
 
 ### What's new

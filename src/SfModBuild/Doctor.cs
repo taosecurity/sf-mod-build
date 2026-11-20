@@ -129,7 +129,7 @@ internal static class Doctor
         return list;
     }
 
-    public const string CheckerHowTo = "Get sf-mod-check (called sfmodcheck before its rename) from https://github.com/taosecurity/sfmodcheck/releases. " +
+    public const string CheckerHowTo = "Get sf-mod-check (called sfmodcheck before its rename) from https://github.com/taosecurity/sf-mod-check/releases. " +
                                        "Put it on PATH, or give it with --checker <exe>.";
 
     static DoctorItem CheckerItem(IHostEnv env, string? given)

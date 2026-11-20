@@ -41,42 +41,44 @@ For AI assistants: step-by-step instructions are in [AGENTS.md](AGENTS.md).
     FOUND    .NET SDK: C:\Program Files\dotnet\dotnet.exe (SDK 9.0.321, 10.0.402, 10.0.403, 10.0.404)
     WARNING  Checker: not found
              what it is for: checks the finished zip (release check); without it the build still works, unchecked
-             how to get it: Get sf-mod-check (called sfmodcheck before its rename) from https://github.com/taosecurity/sfmodcheck/releases. Put it on PATH, or give it with --checker <exe>.
+             how to get it: Get sf-mod-check (called sfmodcheck before its rename) from https://github.com/taosecurity/sf-mod-check/releases. Put it on PATH, or give it with --checker <exe>.
     note: another Starfield install was found (Game Pass (XboxGames folder)): C:\XboxGames\Starfield\Content. To use it instead, give --game "C:\XboxGames\Starfield\Content"
     RESULT: OK, ready to build (with a WARNING: see above)
 
-The link in that message uses the checker's old name; it still works, because GitHub forwards it to
-[sf-mod-check](https://github.com/taosecurity/sf-mod-check/releases).
+Then `build` on a small test mod called TestMod, made from the starter, with sf-mod-check 0.9.0 given as the checker (folder names shortened
+to `C:\Mods\TestMod` and `C:\Tools`):
 
-Then `build` on a starter mod called TestMod, with the checker given (folder names shortened to `C:\Mods\TestMod`).
-The checker in this run was version 0.7.0, from before it was renamed, so it prints its old name:
-
-    > sf-mod-build build --checker C:\Tools\sfmodcheck.exe
+    > sf-mod-build build --checker C:\Tools\sf-mod-check.exe
     == compile
     game script sources: ...\sf-mod-build\vanilla\b5f3f66d6041193c2db139c50a8a4a2da7a80c862a95ba5eec929c7a2c42983c\Scripts\Source
-    compiled TMD\StarterQuestScript.psc
+    compiled TMD\TestModQuestScript.psc
     RESULT: OK, 1 script(s) compiled into C:\Mods\TestMod\.build\stage\Scripts
     == plugin
     running the builder: TestMod.Builder.csproj (the first run restores and builds it, which can take a few minutes)
     built    C:\Mods\TestMod\dist\TestMod.esm (800 bytes)
     RESULT: OK, TestMod.esm built into C:\Mods\TestMod\dist
     == pack
-    packed   C:\Mods\TestMod\dist\TestMod - Main.ba2 (686 bytes)
+    packed   C:\Mods\TestMod\dist\TestMod - Main.ba2 (684 bytes)
     RESULT: OK, C:\Mods\TestMod\dist\TestMod - Main.ba2 made
     == zip
     zipped   LICENSE-TestMod.txt
     zipped   README-TestMod.md
     zipped   TestMod - Main.ba2
     zipped   TestMod.esm
-    sha256   02fe5a5ddfd6575002ca129f2676a7360c89213c538605741f07130da42412df
-    RESULT: OK, C:\Mods\TestMod\TestMod-0.1.0.zip written (4 files, 2775 bytes)
+    sha256   0e832f6100a3782a5af5433b416fa74abaa9fe8a140e2aeb6add3051bd97be78
+    RESULT: OK, C:\Mods\TestMod\TestMod-0.1.0.zip written (4 files, 2703 bytes)
     == check
-    checking TestMod-0.1.0.zip with sfmodcheck.exe
-    ...
+    checking TestMod-0.1.0.zip with sf-mod-check.exe
+             sf-mod-check 0.9.0 release (basic profile): TestMod-0.1.0.zip (4 files, 1 plugins, 1 archives)
+             NOTE     [dmmdeps] DMMDeps wasn't given (--dmmdeps), so only sf-mod-check's own check of the files the plugins need ran: attached scripts and model paths. Textures, materials and voice files were not checked.
              NOTE     [plugin-check] TestMod.esm: OK, 0 errors, 0 warnings (light master, 0 masters, 3 records, 0 overrides (0 ITM), 2 links)
+             NOTE     [mutagen-gap] TestMod.esm: 3 own records, 0 overrides, 0 compared with their master's copy
              RESULT: OK (0 problems, 0 to review, 0 warnings)
+             sf-mod-check 0.9.0 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-mod-check
     RESULT: OK, TestMod-0.1.0.zip passed the release check
     RESULT: OK, built C:\Mods\TestMod\TestMod-0.1.0.zip
+
+If you still have a copy from before the rename, called `sfmodcheck.exe`, sf-mod-build finds and runs it the same way.
 
 ## What it does
 
@@ -112,7 +114,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.1.0.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.1.1.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -121,13 +123,13 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.1.0-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.1.0-win-x64.zip SHA256` prints the hash). Right-click the zip,
+- **As a program**: download `sf-mod-build-0.1.1-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.1.1-win-x64.zip SHA256` prints the hash). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.1.0.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.1.1.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -170,7 +172,7 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.4.0 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.4.0 is the
-  BuildKit version sf-mod-build 0.1.0 was tested with. (BuildKit 0.4.1 has come out since; it hasn't been tested
+  BuildKit version sf-mod-build 0.1.1 was tested with. (BuildKit 0.4.1 has come out since; it hasn't been tested
   with this template yet.)
 - One starter script, `Scripts\Source\MYM\StarterQuestScript.psc`, that writes `[MyMod]` lines to the Papyrus log.
 - A "Show Debug Messages (PC only)" switch in the mod's own Gameplay Options group.

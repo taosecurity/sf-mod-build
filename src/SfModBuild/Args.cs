@@ -116,7 +116,7 @@ internal static class Args
     public static string Example(string option) => option switch
     {
         "--game" => "\"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Starfield\"",
-        "--checker" => "\"C:\\Tools\\sfmodcheck.exe\"",
+        "--checker" => "\"C:\\Tools\\sf-mod-check.exe\"",
         "--log" => "sf-mod-build-log.txt",
         _ => "<value>",
     };

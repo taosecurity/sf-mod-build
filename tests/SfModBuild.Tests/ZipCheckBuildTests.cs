@@ -262,7 +262,7 @@ public class ZipCheckBuildTests
             RunApp(env, out _, "zip", sfmod);
             Assert.Equal(ExitCodes.Ok, RunApp(env, out var output, "check", sfmod, "--game", game));
             Assert.Contains("WARNING", output);
-            Assert.Contains("https://github.com/taosecurity/sfmodcheck/releases", output);
+            Assert.Contains("https://github.com/taosecurity/sf-mod-check/releases", output);
             Assert.Empty(env.Execs);
             Assert.Equal(ExitCodes.BadInput, RunApp(env, out output, "check", sfmod, "--game", game, "--require-check"));
             Assert.Contains("--require-check", output);

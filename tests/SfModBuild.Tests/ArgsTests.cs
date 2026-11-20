@@ -32,6 +32,22 @@ public class ArgsTests
     }
 
     [Fact]
+    public void CheckerExampleUsesTheNewExeName()
+    {
+        Assert.Equal("\"C:\\Tools\\sf-mod-check.exe\"", Args.Example("--checker"));
+        Assert.Null(Args.Parse(new[] { "--checker" }, Spec, out var error));
+        Assert.Contains("for example: --checker \"C:\\Tools\\sf-mod-check.exe\"", error);
+        Assert.DoesNotContain("sfmodcheck.exe", error);
+    }
+
+    [Fact]
+    public void CheckerHowToLinksTheRenamedRepo()
+    {
+        Assert.Contains("https://github.com/taosecurity/sf-mod-check/releases", Doctor.CheckerHowTo);
+        Assert.DoesNotContain("github.com/taosecurity/sfmodcheck", Doctor.CheckerHowTo);
+    }
+
+    [Fact]
     public void UnknownOptionSuggestsTheNearOne()
     {
         Assert.Null(Args.Parse(new[] { "--gmae", "x" }, Spec, out var error));

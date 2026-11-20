@@ -124,7 +124,8 @@ public class DoctorTests
         Assert.Contains("WARNING  Checker", text);
         Assert.Contains("Starfield Creation Kit", text);
         Assert.Contains("https://dotnet.microsoft.com/download/dotnet/9.0", text);
-        Assert.Contains("https://github.com/taosecurity/sfmodcheck/releases", text);
+        Assert.Contains("https://github.com/taosecurity/sf-mod-check/releases", text);
+        Assert.DoesNotContain("github.com/taosecurity/sfmodcheck", text);
         Assert.Contains("RESULT: MISSING 4", text);
         Assert.Equal(5, text.Split('\n').Count(l => l.Contains("what it is for:")));   // 5 missing items
     }
@@ -184,7 +185,7 @@ public class DoctorTests
         Assert.Equal(2, App.Run(Array.Empty<string>(), env, new StringWriter()));
         var v = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "--version" }, env, v));
-        Assert.StartsWith("sf-mod-build 0.1.0 ", v.ToString());
+        Assert.StartsWith("sf-mod-build 0.1.1 ", v.ToString());
         var h = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "doctor", "--help" }, env, h));
         Assert.Contains("usage: sf-mod-build doctor", h.ToString());
