@@ -1,0 +1,34 @@
+# Runs the tests on Windows and Linux. The tests use made-up compilers, Archive2s and checkers (small scripts), so
+# no game and no Creation Kit are needed.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+      - name: Restore (lock files)
+        run: dotnet restore sf-mod-build.sln --locked-mode
+      - name: Tests
+        run: dotnet test sf-mod-build.sln -c Release --no-restore
+      - name: The tool starts
+        run: dotnet run --project src/SfModBuild -c Release --no-restore -- --version
+      - name: The template's project file validates
+        run: |
+          dotnet run --project src/SfModBuild -c Release --no-restore -- validate templates/sfmod/sfmod.json

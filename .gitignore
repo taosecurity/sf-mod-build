@@ -1,0 +1,10 @@
+bin/
+obj/
+out/
+dist/
+.build/
+creations-out/
+*.zip
+*.nupkg
+TestResults/
+.vs/

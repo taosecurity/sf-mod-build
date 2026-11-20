@@ -1,0 +1,45 @@
+// sf-mod-build build [sfmod.json]: the whole build in order: compile, plugin, pack, zip, check. It stops at the first
+// step that doesn't exit 0 and returns that step's exit code. One RESULT line at the end names the step that stopped
+// it, or says the build is done.
+namespace SfModBuild;
+
+internal static class Build
+{
+    public const string Usage =
+        "usage: sf-mod-build build [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--require-check] [--verbose] [--log <file>]\n" +
+        "  compile, plugin, pack, zip and check in order; stops at the first step that fails";
+
+    public static readonly ArgSpec Spec = new(new[] { "--game", "--checker" }, new[] { "--require-check" }, MaxPositionals: 1);
+
+    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
+    {
+        var steps = new (string Name, Func<ParsedArgs, IHostEnv, TextWriter, int> Run)[]
+        {
+            ("compile", Compile.Run),
+            ("plugin", Plugin.Run),
+            ("pack", Pack.Run),
+            ("zip", Zip.Run),
+            ("check", Check.Run),
+        };
+        string? zipPath = null;
+        foreach (var (name, run) in steps)
+        {
+            stdout.WriteLine($"== {name}");
+            Log.Write($"build: step {name}");
+            var code = run(p, env, stdout);
+            Log.Write($"build: step {name} exit code {code}");
+            if (code != ExitCodes.Ok)
+            {
+                stdout.WriteLine($"RESULT: BUILD STOPPED at {name} (exit code {code}; see the {name} RESULT line above)");
+                return code;
+            }
+            if (name == "zip")
+            {
+                var project = Common.LoadProject(p, TextWriter.Null, "");
+                zipPath = project == null ? null : Path.GetFullPath(project.ZipPath);
+            }
+        }
+        stdout.WriteLine($"RESULT: OK, built {zipPath}");
+        return ExitCodes.Ok;
+    }
+}

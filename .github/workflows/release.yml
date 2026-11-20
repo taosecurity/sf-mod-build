@@ -1,0 +1,75 @@
+# On a version tag (v0.1.0): runs the tests, then builds the release files and makes a DRAFT GitHub release with
+#   sf-mod-build.<version>.nupkg                 the dotnet tool (dotnet tool install --global sf-mod-build --add-source <folder>)
+#   sf-mod-build-<version>-win-x64.zip           the self-contained Windows program (no .NET runtime needed to run it)
+#   sf-mod-build-template-<version>.zip          the dotnet new sfmod template (dotnet new install <unzipped folder>)
+#   SHA256SUMS                                   sha256 of the three files above
+# The release stays a draft until someone looks it over and publishes it by hand.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+      - run: dotnet restore sf-mod-build.sln --locked-mode
+      - run: dotnet test sf-mod-build.sln -c Release --no-restore
+
+  release:
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+      - name: The tag matches the project's version
+        run: |
+          $tag = "$env:GITHUB_REF_NAME".TrimStart('v')
+          $version = ([xml](Get-Content src/SfModBuild/SfModBuild.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ($tag -ne $version) { throw "tag $env:GITHUB_REF_NAME doesn't match <Version>$version</Version> in src/SfModBuild/SfModBuild.csproj" }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: The dotnet tool package
+        run: dotnet pack src/SfModBuild -c Release -o out
+      - name: The self-contained Windows program
+        run: |
+          dotnet publish src/SfModBuild -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/win-x64
+          Copy-Item README.md, AGENTS.md, CHANGELOG.md, LICENSE publish/win-x64/
+          Compress-Archive -Path publish/win-x64/* -DestinationPath "out/sf-mod-build-$env:VERSION-win-x64.zip"
+      - name: The template
+        run: |
+          # on Windows the * takes the dot folders too (.template.config, .gitignore); the checkout has no build output
+          Compress-Archive -Path templates/sfmod/* -DestinationPath "out/sf-mod-build-template-$env:VERSION.zip"
+      - name: Checksums
+        working-directory: out
+        run: |
+          Get-ChildItem -File | Where-Object Name -ne SHA256SUMS | Sort-Object Name | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          } | Set-Content -Path SHA256SUMS -Encoding ascii
+          Get-Content SHA256SUMS
+      - name: Draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$env:GITHUB_REF_NAME" (Get-ChildItem out -File).FullName
+          --title "sf-mod-build $env:VERSION"
+          --notes "See CHANGELOG.md for what changed. Check the downloads against SHA256SUMS."
+          --draft --verify-tag

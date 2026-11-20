@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "sf-mod-build",
+  "classifications": [ "Starfield", "Mod", "Papyrus", "Mutagen" ],
+  "identity": "SfModBuild.Templates.SfMod",
+  "name": "Starfield mod (sf-mod-build)",
+  "description": "A Starfield mod: a Mutagen/BuildKit builder that makes a small light master, one Papyrus quest script, and an sfmod.json for sf-mod-build.",
+  "shortName": "sfmod",
+  "sourceName": "MyMod",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "symbols": {
+    "prefix": {
+      "type": "parameter",
+      "datatype": "text",
+      "description": "Short prefix for the mod's EditorIDs and its Papyrus namespace (letters and digits, e.g. MYM).",
+      "defaultValue": "MYM",
+      "isRequired": false
+    },
+    "safePrefix": {
+      "type": "generated",
+      "generator": "regex",
+      "replaces": "MYM",
+      "fileRename": "MYM",
+      "parameters": {
+        "source": "prefix",
+        "steps": [
+          { "regex": "[^A-Za-z0-9_]", "replacement": "" },
+          { "regex": "^$", "replacement": "MYM" },
+          { "regex": "^([0-9])", "replacement": "M$1" }
+        ]
+      }
+    },
+    "author": {
+      "type": "parameter",
+      "datatype": "text",
+      "description": "Author name written into the plugin header.",
+      "defaultValue": "Your Name",
+      "replaces": "AUTHOR_NAME",
+      "isRequired": false
+    }
+  },
+  "sources": [
+    {
+      "exclude": [ ".template.config/**/*", "**/[Bb]in/**", "**/[Oo]bj/**", "**/.build/**", "**/dist/**", "**/creations-out/**", "**/*.zip", "**/*.lock.json", "**/*.user", "**/*.filelist" ]
+    }
+  ]
+}

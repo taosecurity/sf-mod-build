@@ -1,0 +1,24 @@
+// sf-mod-build project file for MyMod. Build everything with:  sf-mod-build build
+// Check this file with:  sf-mod-build validate
+{
+  "plugin": "MyMod.esm",
+  "version": "0.1.0",
+  "scripts": {
+    "source": "Scripts/Source",
+    "namespaces": ["MYM"]
+  },
+  "builder": {
+    "project": "Builder",
+    "args": ["{data}", "{dist}", "{scripts}"]
+  },
+  "dist": "dist",
+  "stage": ".build/stage",
+  "xbox": false,
+  "zip": {
+    "name": "{name}-{version}.zip",
+    "files": {
+      "README.md": "README-{name}.md",
+      "LICENSE": "LICENSE-{name}.txt"
+    }
+  }
+}

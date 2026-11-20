@@ -1,0 +1,639 @@
+// sfmod.json: one project file per mod. It says what the mod is called, where its Papyrus sources are, how to run its
+// Mutagen builder, where the build output goes and what else goes into the zip. Paths are relative to the folder that
+// holds sfmod.json. Comments (// and /* */) and trailing commas are allowed.
+//
+//   {
+//     "plugin": "MyMod.esm",                       the plugin file the builder writes into dist (required)
+//     "name": "MyMod",                             the mod's name for the zip (default: the plugin name without .esm)
+//     "version": "0.1.0",                          numbers and dots (required)
+//     "scripts": {                                 leave out when the mod has no scripts
+//       "source": "Scripts/Source",                one folder, or a list of folders (default Scripts/Source)
+//       "namespaces": ["MYM"],                     every .psc in <source>/<namespace>/ ...
+//       "files": ["MYM/MyQuestScript"]             ... or an explicit list (namespace/name, .psc optional)
+//     },
+//     "builder": {
+//       "project": "Builder",                      a folder holding one .csproj, or the .csproj itself (required)
+//       "args": ["{data}", "{dist}", "{version}"]  what the builder is given; placeholders below (required)
+//     },
+//     "dist": "dist",                              the plugin and the BA2 go here (default dist)
+//     "stage": ".build/stage",                     compiled scripts go here (default .build/stage)
+//     "xbox": false,                               also make "<plugin> - Main_xbox.ba2" in creations-out (default false)
+//     "creationsOut": "creations-out",             where the Creations upload set goes (default creations-out)
+//     "zip": {
+//       "name": "{name}-{version}.zip",            the zip's name (default {name}-{version}.zip)
+//       "folder": ".",                             where the zip is written (default: the sfmod.json folder)
+//       "files": { "README.md": "README-{name}.md" }   extra files: file here -> name inside the zip (never .psc)
+//     },
+//     "check": {
+//       "checker": "path/to/sf-mod-check.exe",     default: sf-mod-check or sfmodcheck on PATH
+//       "required": false,                         true: a missing checker fails the build
+//       "args": []                                 extra options for the checker's release command
+//     }
+//   }
+//
+// Builder placeholders: {data} the game's Data folder, {dist}, {scripts} the (first) script source folder, {stage},
+// {version}. Zip name and zip file name placeholders: {name}, {plugin} (without extension), {version}.
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace SfModBuild;
+
+/// <summary>One problem in an sfmod.json: the field (a JSON path such as builder.args[1]), what is wrong and the fix.</summary>
+internal sealed record ProjectProblem(string Field, string Problem, string Fix, bool IsWarning = false)
+{
+    public string Format(string file) =>
+        $"{(IsWarning ? "WARNING" : "PROBLEM")}: {file}: {Field}: {Problem} Fix: {Fix}";
+}
+
+/// <summary>A loaded sfmod.json with every path made absolute.</summary>
+internal sealed class SfModProject
+{
+    public required string File { get; init; }
+    public required string Folder { get; init; }
+    public required string Name { get; init; }
+    public required string Version { get; init; }
+    /// <summary>The plugin file name, such as MyMod.esm.</summary>
+    public required string Plugin { get; init; }
+    public string PluginBase => Path.GetFileNameWithoutExtension(Plugin);
+    public string Ba2Name => $"{PluginBase} - Main.ba2";
+    public string XboxBa2Name => $"{PluginBase} - Main_xbox.ba2";
+    public ScriptsSection? Scripts { get; init; }
+    public required string BuilderProject { get; init; }
+    public required IReadOnlyList<string> BuilderArgs { get; init; }
+    public required string Dist { get; init; }
+    public required string Stage { get; init; }
+    public bool Xbox { get; init; }
+    public required string CreationsOut { get; init; }
+    public required string ZipName { get; init; }
+    public required string ZipFolder { get; init; }
+    public string ZipPath => Path.Combine(ZipFolder, ZipName);
+    /// <summary>Extra zip files in the order written: full path here, name inside the zip.</summary>
+    public required IReadOnlyList<(string Source, string NameInZip)> ZipFiles { get; init; }
+    public string? Checker { get; init; }
+    public bool CheckRequired { get; init; }
+    public required IReadOnlyList<string> CheckArgs { get; init; }
+
+    public sealed class ScriptsSection
+    {
+        public required IReadOnlyList<string> Sources { get; init; }
+        public required IReadOnlyList<string> Namespaces { get; init; }
+        /// <summary>Explicit scripts as "Namespace\Name" (no .psc); empty when the namespaces' folders are used.</summary>
+        public required IReadOnlyList<string> Files { get; init; }
+    }
+
+    public const string FileName = "sfmod.json";
+
+    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "dist", "stage", "xbox", "creationsOut", "zip", "check" };
+    static readonly string[] ScriptsFields = { "source", "namespaces", "files" };
+    static readonly string[] BuilderFields = { "project", "args" };
+    static readonly string[] ZipFields = { "name", "folder", "files" };
+    static readonly string[] CheckFields = { "checker", "required", "args" };
+    public static readonly string[] BuilderPlaceholders = { "data", "dist", "scripts", "stage", "version" };
+    public static readonly string[] ZipPlaceholders = { "name", "plugin", "version" };
+    static readonly string[] PluginExtensions = { ".esm", ".esp", ".esl" };
+    // Starfield drops a plugin from Plugins.txt when its name ends in an official plugin's name.
+    static readonly string[] OfficialEndings = { "Starfield", "Constellation", "OldMars", "ShatteredSpace" };
+    // Official Creations' plugins (SFBGS003.esm and so on): a mod must never take one of these names.
+    static readonly System.Text.RegularExpressions.Regex SfbgsName =
+        new(@"^SFBGS[0-9A-Fa-f]{3}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    static readonly System.Text.RegularExpressions.Regex SfbgsEnding =
+        new(@".SFBGS[0-9A-Fa-f]{3}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Reads and checks an sfmod.json. Returns null when it has a PROBLEM; problems (and warnings) are
+    /// listed either way.</summary>
+    public static SfModProject? Load(string file, List<ProjectProblem> problems)
+    {
+        var full = Path.GetFullPath(file);
+        if (Directory.Exists(full)) full = Path.Combine(full, FileName);
+        Log.Write($"project file: {full}");
+        if (!System.IO.File.Exists(full))
+        {
+            problems.Add(new("(file)", $"there is no {Path.GetFileName(full)} at {Path.GetDirectoryName(full)}.",
+                $"run the command in the mod's folder, give the path to its {FileName}, or make one (dotnet new sfmod makes a starter project)."));
+            return null;
+        }
+        string text;
+        try { text = System.IO.File.ReadAllText(full); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            problems.Add(new("(file)", $"it can't be read ({e.Message}).", "check that the file isn't open elsewhere and that this account can read it."));
+            return null;
+        }
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        }
+        catch (JsonException e)
+        {
+            var where = e.LineNumber is { } l ? $" at line {l + 1}, column {(e.BytePositionInLine ?? 0) + 1}" : "";
+            problems.Add(new("(file)", $"it isn't valid JSON{where}: {FirstSentence(e.Message)}",
+                "look for a missing comma, quote or bracket just before that spot. Backslashes in paths must be doubled (\\\\) or written as /."));
+            return null;
+        }
+        using (doc)
+        {
+            var r = new Reader(Path.GetDirectoryName(full)!, problems);
+            var p = r.Project(doc.RootElement, full);
+            var errors = problems.Count(x => !x.IsWarning);
+            Log.Write($"project file read: {errors} problem(s), {problems.Count - errors} warning(s)");
+            return errors == 0 ? p : null;
+        }
+    }
+
+    static string FirstSentence(string message)
+    {
+        var i = message.IndexOf(". ", StringComparison.Ordinal);
+        return i > 0 ? message[..(i + 1)] : message;
+    }
+
+    /// <summary>Puts values into a template such as "{name}-{version}.zip". Unknown placeholders are left as they are
+    /// (the loader has already refused them).</summary>
+    public static string Expand(string template, IReadOnlyDictionary<string, string> values) =>
+        Regex.Replace(template, @"\{([A-Za-z]+)\}", m => values.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
+
+    sealed class Reader
+    {
+        readonly string folder;
+        readonly List<ProjectProblem> problems;
+        public Reader(string folder, List<ProjectProblem> problems) { this.folder = folder; this.problems = problems; }
+
+        void Error(string field, string problem, string fix) => problems.Add(new(field, problem, fix));
+        void Warn(string field, string problem, string fix) => problems.Add(new(field, problem, fix, IsWarning: true));
+
+        public SfModProject? Project(JsonElement root, string file)
+        {
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                Error("(file)", $"it holds a JSON {Kind(root)}, not an object.", "wrap the settings in { }, for example { \"plugin\": \"MyMod.esm\", ... }.");
+                return null;
+            }
+            Fields(root, "", TopFields);
+
+            var plugin = String(root, "plugin", required: true, example: "\"MyMod.esm\"");
+            if (plugin != null) plugin = CheckPlugin(plugin);
+            var name = String(root, "name", required: false, example: "\"MyMod\"");
+            if (name != null && (!GoodFileName(name) || name.Contains('/') || name.Contains('\\')))
+                Error("name", $"\"{name}\" can't be part of a file name (it has / \\ : * ? \" < > | or is empty).", "use letters, digits, dashes and dots, for example \"MyMod\".");
+            name ??= plugin != null ? Path.GetFileNameWithoutExtension(plugin) : null;
+
+            var version = String(root, "version", required: true, example: "\"0.1.0\"");
+            if (version != null && !Regex.IsMatch(version, @"^\d+(\.\d+){0,3}$"))
+                Error("version", $"\"{version}\" isn't a version made of numbers and dots.", "write it like \"0.1.0\" or \"1.2\" (up to four numbers).");
+
+            var scripts = Scripts(root);
+            var (builderProject, builderArgs) = Builder(root);
+            var dist = Folder(root, "dist", "dist");
+            var stage = Folder(root, "stage", Path.Combine(".build", "stage"));
+            if (dist != null && stage != null && SamePath(dist, stage))
+                Error("stage", "it is the same folder as dist.", "use separate folders, for example \"dist\" and \".build/stage\" (stage is emptied on every build).");
+            if (stage != null && SamePath(stage, folder))
+                Error("stage", "it is the mod's own folder, which every build empties.", "use a folder of its own, for example \".build/stage\".");
+            if (dist != null && SamePath(dist, folder))
+                Error("dist", "it is the mod's own folder.", "use a folder of its own, for example \"dist\".");
+            var xbox = Bool(root, "xbox", false);
+            var creationsOut = Folder(root, "creationsOut", "creations-out");
+            if (creationsOut != null && SamePath(creationsOut, folder))
+                Error("creationsOut", "it is the mod's own folder, which pack empties when xbox is on.", "use a folder of its own, for example \"creations-out\".");
+            // The tool empties these three before writing, so they must be folders of their own inside the mod's folder.
+            foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
+                if (path != null && !SamePath(path, folder) && !IsUnder(path, folder))
+                    Error(field, $"{path} isn't inside the mod's folder {folder}, and every build empties it.",
+                        $"give a folder inside the mod's folder, relative to sfmod.json, for example \"{(field == "stage" ? ".build/stage" : field == "dist" ? "dist" : "creations-out")}\".");
+            var (zipName, zipFolder, zipFiles) = Zip(root, name, plugin, version);
+            var (checker, checkRequired, checkArgs) = Check(root);
+
+            if (plugin == null || name == null || version == null || builderProject == null || builderArgs == null || dist == null
+                || stage == null || creationsOut == null || zipName == null || zipFolder == null || zipFiles == null || checkArgs == null)
+                return null;
+            var p = new SfModProject
+            {
+                File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts,
+                BuilderProject = builderProject, BuilderArgs = builderArgs, Dist = dist, Stage = stage, Xbox = xbox,
+                CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles,
+                Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
+            };
+            foreach (var (_, inZip) in zipFiles)
+                if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase) || string.Equals(inZip, p.Ba2Name, StringComparison.OrdinalIgnoreCase))
+                    Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its BA2 come from dist).", "leave the plugin and the BA2 out of zip.files.");
+            return p;
+        }
+
+        string? CheckPlugin(string plugin)
+        {
+            var ext = Path.GetExtension(plugin);
+            if (!PluginExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+            {
+                Error("plugin", $"\"{plugin}\" doesn't end in .esm, .esp or .esl.", "give the plugin's file name with its extension, for example \"MyMod.esm\".");
+                return null;
+            }
+            if (!GoodFileName(plugin) || plugin.Contains('/') || plugin.Contains('\\'))
+            {
+                Error("plugin", $"\"{plugin}\" isn't a plain file name.", "give only the file name the builder writes into dist, for example \"MyMod.esm\" (no folder).");
+                return null;
+            }
+            var stem = Path.GetFileNameWithoutExtension(plugin);
+            if (OfficialEndings.Any(o => stem.Equals(o, StringComparison.OrdinalIgnoreCase)) || SfbgsName.IsMatch(stem))
+            {
+                Error("plugin", ext.Equals(".esm", StringComparison.OrdinalIgnoreCase)
+                        ? $"\"{plugin}\" is the name of one of the game's own plugins; installing the mod would replace it."
+                        : $"\"{plugin}\" uses the name of one of the game's own plugins; Starfield removes such names from Plugins.txt, so the mod would stop loading.",
+                    $"give the mod a name of its own, for example \"My{stem}Addon{ext}\".");
+                return null;
+            }
+            foreach (var official in OfficialEndings)
+                if (stem.Length > official.Length && stem.EndsWith(official, StringComparison.OrdinalIgnoreCase))
+                    Error("plugin", $"\"{plugin}\" ends in the official plugin name \"{official}\"; Starfield removes such names from Plugins.txt, so the mod would stop loading.",
+                        $"add a word after it, for example \"{stem}Addon{ext}\".");
+            if (stem.StartsWith("BlueprintShips-", StringComparison.OrdinalIgnoreCase))
+                Error("plugin", $"\"{plugin}\" starts with \"BlueprintShips-\", which Starfield removes from Plugins.txt, so the mod would stop loading.",
+                    "pick a name that doesn't start with BlueprintShips-.");
+            // Official Creations are named SFBGS001.esm and so on. Endings like "-SFBGS003" are untested in game,
+            // but the names the game is known to drop are all official ones, so warn rather than refuse.
+            if (SfbgsEnding.IsMatch(stem))
+                Warn("plugin", $"\"{plugin}\" ends in an official Creation's name (SFBGS...); Starfield may remove it from Plugins.txt like other official names, so the mod could stop loading.",
+                    $"add a word after it, for example \"{stem}Addon{ext}\".");
+            return plugin;
+        }
+
+        SfModProject.ScriptsSection? Scripts(JsonElement root)
+        {
+            if (!root.TryGetProperty("scripts", out var s) || s.ValueKind == JsonValueKind.Null) return null;
+            if (s.ValueKind != JsonValueKind.Object)
+            {
+                Error("scripts", $"it is a {Kind(s)}, not an object.", "write it like \"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] }, or leave it out when the mod has no scripts.");
+                return null;
+            }
+            Fields(s, "scripts.", ScriptsFields);
+            var sources = new List<string>();
+            if (s.TryGetProperty("source", out var src))
+            {
+                if (src.ValueKind == JsonValueKind.String) AddSource(src.GetString()!, "scripts.source", sources);
+                else if (src.ValueKind == JsonValueKind.Array)
+                {
+                    var i = 0;
+                    foreach (var e in src.EnumerateArray())
+                    {
+                        if (e.ValueKind == JsonValueKind.String) AddSource(e.GetString()!, $"scripts.source[{i}]", sources);
+                        else Error($"scripts.source[{i}]", $"it is a {Kind(e)}, not a folder name.", "write each folder as a string, for example \"Scripts/Source\".");
+                        i++;
+                    }
+                    if (i == 0) Error("scripts.source", "the list is empty.", "give at least one folder, for example \"Scripts/Source\".");
+                }
+                else Error("scripts.source", $"it is a {Kind(src)}.", "give a folder, for example \"Scripts/Source\", or a list of folders.");
+            }
+            else AddSource("Scripts/Source", "scripts.source (default Scripts/Source)", sources);
+
+            var namespaces = StringList(s, "namespaces", "scripts.namespaces", "[\"MYM\"]");
+            var files = StringList(s, "files", "scripts.files", "[\"MYM/MyQuestScript\"]");
+            if (namespaces.Count == 0 && files.Count == 0)
+                Error("scripts", "it lists neither namespaces nor files, so there is nothing to compile.",
+                    "add \"namespaces\": [\"<the folder under the source folder that holds your scripts>\"], or leave out \"scripts\" when the mod has none.");
+            if (sources.Count == 0) return null;
+
+            var nsFound = new List<string>();
+            for (var i = 0; i < namespaces.Count; i++)
+            {
+                var ns = namespaces[i];
+                if (!Regex.IsMatch(ns, @"^[A-Za-z_][A-Za-z0-9_]*(?:[/\\][A-Za-z_][A-Za-z0-9_]*)*$"))
+                {
+                    Error($"scripts.namespaces[{i}]", $"\"{ns}\" isn't a Papyrus namespace (letters, digits and _, starting with a letter; / between levels).", "give the folder name under the source folder, for example \"MYM\".");
+                    continue;
+                }
+                var nsPath = ns.Replace('/', '\\').Replace('\\', Path.DirectorySeparatorChar);
+                var where = sources.Select(x => Path.Combine(x, nsPath)).FirstOrDefault(Directory.Exists);
+                if (where == null)
+                    Error($"scripts.namespaces[{i}]", $"there is no folder \"{ns}\" in {string.Join(" or ", sources)}.", "check the spelling, or move the scripts into <source>/<namespace>/.");
+                else if (!Directory.EnumerateFiles(where, "*.psc").Any())
+                    Error($"scripts.namespaces[{i}]", $"{where} holds no .psc files.", "put the namespace's scripts there, or remove it from the list.");
+                else nsFound.Add(ns.Replace('/', '\\'));
+            }
+            var fileNames = new List<string>();
+            for (var i = 0; i < files.Count; i++)
+            {
+                var f = files[i].Replace('/', '\\');
+                if (f.EndsWith(".psc", StringComparison.OrdinalIgnoreCase)) f = f[..^4];
+                if (!Regex.IsMatch(f, @"^(?:[A-Za-z_][A-Za-z0-9_]*\\)*[A-Za-z_][A-Za-z0-9_]*$"))
+                {
+                    Error($"scripts.files[{i}]", $"\"{files[i]}\" isn't a script name like \"Namespace/ScriptName\".", "give the namespace folder and the script name, for example \"MYM/MyQuestScript\".");
+                    continue;
+                }
+                var rel = f.Replace('\\', Path.DirectorySeparatorChar) + ".psc";
+                if (!sources.Any(x => System.IO.File.Exists(Path.Combine(x, rel))))
+                    Error($"scripts.files[{i}]", $"there is no {rel} in {string.Join(" or ", sources)}.", "check the spelling and the namespace folder.");
+                else if (fileNames.Contains(f, StringComparer.OrdinalIgnoreCase))
+                    Warn($"scripts.files[{i}]", $"\"{files[i]}\" is listed twice.", "list each script once.");
+                else fileNames.Add(f);
+            }
+            return new SfModProject.ScriptsSection { Sources = sources, Namespaces = nsFound, Files = fileNames };
+        }
+
+        void AddSource(string value, string field, List<string> sources)
+        {
+            var full = PathOf(value, field);
+            if (full == null) return;
+            if (!Directory.Exists(full))
+                Error(field, $"the script source folder {full} isn't there.", "give the folder that holds your namespace folders (the one with MYM\\MyScript.psc under it), relative to sfmod.json.");
+            else sources.Add(full);
+        }
+
+        (string?, List<string>?) Builder(JsonElement root)
+        {
+            if (!root.TryGetProperty("builder", out var b))
+            {
+                Error("builder", "it is missing.", "add \"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\", \"{version}\"] } (the Mutagen project that writes the plugin).");
+                return (null, null);
+            }
+            if (b.ValueKind != JsonValueKind.Object)
+            {
+                Error("builder", $"it is a {Kind(b)}, not an object.", "write it like \"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\"] }.");
+                return (null, null);
+            }
+            Fields(b, "builder.", BuilderFields);
+            string? project = null;
+            var value = String(b, "project", required: true, example: "\"Builder\"", field: "builder.project");
+            if (value != null && PathOf(value, "builder.project") is { } full)
+            {
+                if (System.IO.File.Exists(full) && full.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) project = full;
+                else if (Directory.Exists(full))
+                {
+                    var projects = Directory.GetFiles(full, "*.csproj");
+                    if (projects.Length == 1) project = projects[0];
+                    else if (projects.Length == 0) Error("builder.project", $"{full} holds no .csproj file.", "point it at the folder of your Mutagen builder project (the one with the .csproj).");
+                    else Error("builder.project", $"{full} holds {projects.Length} .csproj files.", $"name the one to run, for example \"{value.TrimEnd('/', '\\')}/{Path.GetFileName(projects[0])}\".");
+                }
+                else Error("builder.project", $"{full} isn't there (or isn't a .csproj file).", "give the builder's folder or its .csproj, relative to sfmod.json.");
+            }
+            List<string>? args = null;
+            if (!b.TryGetProperty("args", out var a))
+                Error("builder.args", "it is missing.", "list what your builder expects, in its order, for example [\"{data}\", \"{dist}\", \"{version}\"]. Look at its Program.cs or the old build script's dotnet run line.");
+            else if (a.ValueKind != JsonValueKind.Array)
+                Error("builder.args", $"it is a {Kind(a)}, not a list.", "write it as a list, for example [\"{data}\", \"{dist}\"].");
+            else
+            {
+                args = new List<string>();
+                var i = 0;
+                foreach (var e in a.EnumerateArray())
+                {
+                    if (e.ValueKind != JsonValueKind.String)
+                        Error($"builder.args[{i}]", $"it is a {Kind(e)}.", "write each argument as a string, for example \"{dist}\" or \"--fast\".");
+                    else
+                    {
+                        var s = e.GetString()!;
+                        Placeholders(s, $"builder.args[{i}]", BuilderPlaceholders);
+                        args.Add(s);
+                    }
+                    i++;
+                }
+                if (args.Count > 0 && !args.Any(x => x.Contains("{dist}")))
+                    Warn("builder.args", "no argument holds {dist}, so the builder isn't told where to write the plugin.",
+                        "add \"{dist}\" where your builder expects its output folder, unless it always writes to dist by itself.");
+            }
+            return (project, args);
+        }
+
+        (string?, string?, List<(string, string)>?) Zip(JsonElement root, string? name, string? plugin, string? version)
+        {
+            var values = new Dictionary<string, string>
+            {
+                ["name"] = name ?? "", ["plugin"] = plugin != null ? Path.GetFileNameWithoutExtension(plugin) : "", ["version"] = version ?? "",
+            };
+            JsonElement z = default;
+            var has = root.TryGetProperty("zip", out z) && z.ValueKind != JsonValueKind.Null;
+            if (has && z.ValueKind != JsonValueKind.Object)
+            {
+                Error("zip", $"it is a {Kind(z)}, not an object.", "write it like \"zip\": { \"files\": { \"README.md\": \"README-{name}.md\" } }.");
+                return (null, null, null);
+            }
+            if (has) Fields(z, "zip.", ZipFields);
+
+            var nameTemplate = has ? String(z, "name", false, "\"{name}-{version}.zip\"", "zip.name") : null;
+            nameTemplate ??= "{name}-{version}.zip";
+            string? zipName = null;
+            if (Placeholders(nameTemplate, "zip.name", ZipPlaceholders))
+            {
+                zipName = Expand(nameTemplate, values);
+                if (!zipName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    Error("zip.name", $"\"{nameTemplate}\" doesn't end in .zip.", "end it in .zip, for example \"{name}-{version}.zip\".");
+                else if (!GoodFileName(zipName) || zipName.Contains('/') || zipName.Contains('\\'))
+                    Error("zip.name", $"\"{zipName}\" isn't a plain file name.", "give only the file name; put the folder in zip.folder.");
+            }
+            var zipFolder = has && z.TryGetProperty("folder", out _) ? Folder(z, "folder", ".", "zip.folder") : folder;
+
+            var files = new List<(string, string)>();
+            if (has && z.TryGetProperty("files", out var f) && f.ValueKind != JsonValueKind.Null)
+            {
+                if (f.ValueKind != JsonValueKind.Object)
+                {
+                    Error("zip.files", $"it is a {Kind(f)}, not an object.", "map each file here to its name in the zip, for example { \"README.md\": \"README-{name}.md\", \"LICENSE\": \"LICENSE-{name}.txt\" }.");
+                    return (zipName, zipFolder, null);
+                }
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var e in f.EnumerateObject())
+                {
+                    var field = $"zip.files[\"{e.Name}\"]";
+                    if (e.Value.ValueKind != JsonValueKind.String)
+                    {
+                        Error(field, $"it is a {Kind(e.Value)}.", "give the name in the zip as a string, for example \"README-{name}.md\".");
+                        continue;
+                    }
+                    var target = e.Value.GetString()!;
+                    if (IsScriptSource(e.Name) || IsScriptSource(target))
+                    {
+                        Error(field, "Papyrus source (.psc) never goes in the zip: players need only the compiled scripts, which are in the BA2.", "remove it from zip.files (share source on GitHub instead, if you like).");
+                        continue;
+                    }
+                    var source = PathOf(e.Name, field);
+                    if (source != null && !System.IO.File.Exists(source))
+                    {
+                        Error(field, Directory.Exists(source) ? $"{source} is a folder; zip.files takes files." : $"{source} isn't there.", "give a file, relative to sfmod.json.");
+                        source = null;
+                    }
+                    if (!Placeholders(target, field, ZipPlaceholders)) continue;
+                    var inZip = Expand(target, values).Replace('\\', '/');
+                    if (inZip.Length == 0 || inZip.StartsWith('/') || inZip.Contains(':') || inZip.Split('/').Any(x => x is "" or "." or ".."))
+                    {
+                        Error(field, $"\"{target}\" isn't a usable name inside the zip.", "use a plain name such as \"README-{name}.md\", or a folder inside the zip such as \"Docs/README.md\" (no .., no drive, no leading /).");
+                        continue;
+                    }
+                    if (!seen.Add(inZip))
+                    {
+                        Error(field, $"two files would both be \"{inZip}\" in the zip.", "give each file its own name in the zip.");
+                        continue;
+                    }
+                    if (source != null) files.Add((source, inZip));
+                }
+            }
+            return (zipName, zipFolder, files);
+        }
+
+        (string?, bool, List<string>?) Check(JsonElement root)
+        {
+            if (!root.TryGetProperty("check", out var c) || c.ValueKind == JsonValueKind.Null) return (null, false, new List<string>());
+            if (c.ValueKind != JsonValueKind.Object)
+            {
+                Error("check", $"it is a {Kind(c)}, not an object.", "write it like \"check\": { \"required\": true }, or leave it out.");
+                return (null, false, null);
+            }
+            Fields(c, "check.", CheckFields);
+            string? checker = null;
+            if (String(c, "checker", false, "\"tools/sf-mod-check.exe\"", "check.checker") is { } value && PathOf(value, "check.checker") is { } full)
+            {
+                if (!System.IO.File.Exists(full)) Error("check.checker", $"{full} isn't there.", "give the checker program's path, or leave check.checker out to find sf-mod-check (or sfmodcheck) on PATH.");
+                else checker = full;
+                if (Path.IsPathRooted(value))
+                    Warn("check.checker", "it is a full path, which other people building your mod won't have.", "leave it out (the checker is found on PATH) or give it on the command line with --checker.");
+            }
+            var required = Bool(c, "required", false, "check.required");
+            var args = StringList(c, "args", "check.args", "[\"--strict\"]");
+            return (checker, required, args);
+        }
+
+        // ---- small readers ----
+
+        void Fields(JsonElement obj, string prefix, string[] known)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var prop in obj.EnumerateObject())
+            {
+                if (!seen.Add(prop.Name))
+                    Error(prefix + prop.Name, "it is given twice.", "keep one of them.");
+                if (known.Contains(prop.Name, StringComparer.Ordinal)) continue;
+                var near = known.Select(k => (k, d: Args.Distance(prop.Name.ToLowerInvariant(), k.ToLowerInvariant()))).OrderBy(x => x.d).First();
+                var fix = near.d <= 3 ? $"did you mean \"{near.k}\"?" : $"remove it. The fields here are: {string.Join(", ", known.Where(k => k != "$schema"))}.";
+                Error(prefix + prop.Name, "it isn't a field sf-mod-build knows.", fix);
+            }
+        }
+
+        string? String(JsonElement obj, string name, bool required, string example, string? field = null)
+        {
+            field ??= name;
+            if (!obj.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null)
+            {
+                if (required) Error(field, "it is missing.", $"add \"{name}\": {example}.");
+                return null;
+            }
+            if (v.ValueKind != JsonValueKind.String)
+            {
+                Error(field, $"it is a {Kind(v)}, not a string.", $"write it in quotes, for example \"{name}\": {example}.");
+                return null;
+            }
+            var s = v.GetString()!;
+            if (s.Trim().Length == 0)
+            {
+                Error(field, "it is empty.", $"give a value, for example \"{name}\": {example}" + (required ? "." : ", or leave it out."));
+                return null;
+            }
+            return s;
+        }
+
+        bool Bool(JsonElement obj, string name, bool fallback, string? field = null)
+        {
+            if (!obj.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null) return fallback;
+            if (v.ValueKind is JsonValueKind.True or JsonValueKind.False) return v.GetBoolean();
+            Error(field ?? name, $"it is a {Kind(v)}, not true or false.", $"write true or false without quotes, for example \"{name}\": true.");
+            return fallback;
+        }
+
+        List<string> StringList(JsonElement obj, string name, string field, string example)
+        {
+            var list = new List<string>();
+            if (!obj.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null) return list;
+            if (v.ValueKind != JsonValueKind.Array)
+            {
+                Error(field, $"it is a {Kind(v)}, not a list.", $"write it as a list, for example \"{name}\": {example}.");
+                return list;
+            }
+            var i = 0;
+            foreach (var e in v.EnumerateArray())
+            {
+                if (e.ValueKind == JsonValueKind.String && e.GetString()!.Trim().Length > 0) list.Add(e.GetString()!);
+                else Error($"{field}[{i}]", e.ValueKind == JsonValueKind.String ? "it is empty." : $"it is a {Kind(e)}, not a string.", $"write each entry as a string, for example {example}.");
+                i++;
+            }
+            return list;
+        }
+
+        string? Folder(JsonElement obj, string name, string fallback, string? field = null)
+        {
+            field ??= name;
+            var value = String(obj, name, false, $"\"{fallback.Replace('\\', '/')}\"", field) ?? (obj.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null ? null : fallback);
+            if (value == null) return null;
+            var full = PathOf(value, field);
+            if (full != null && System.IO.File.Exists(full))
+            {
+                Error(field, $"{full} is a file, not a folder.", "give a folder name, relative to sfmod.json.");
+                return null;
+            }
+            return full;
+        }
+
+        /// <summary>A path from the file made absolute (relative to the sfmod.json folder); / and \ both work.</summary>
+        string? PathOf(string value, string field)
+        {
+            if (value.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || value.Contains('*') || value.Contains('?'))
+            {
+                Error(field, $"\"{value}\" isn't a usable path (it has a character paths can't hold, or a wildcard).", "give one plain path, relative to sfmod.json.");
+                return null;
+            }
+            var native = value.Replace('\\', '/').Replace('/', Path.DirectorySeparatorChar);
+            try { return Path.GetFullPath(Path.Combine(folder, native)); }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                Error(field, $"\"{value}\" isn't a usable path ({e.Message}).", "give one plain path, relative to sfmod.json.");
+                return null;
+            }
+        }
+
+        /// <summary>True when every {placeholder} in the text is one of the allowed ones.</summary>
+        bool Placeholders(string text, string field, string[] allowed)
+        {
+            var ok = true;
+            foreach (Match m in Regex.Matches(text, @"\{([^{}]*)\}"))
+            {
+                var name = m.Groups[1].Value;
+                if (allowed.Contains(name, StringComparer.Ordinal)) continue;
+                ok = false;
+                var near = allowed.Select(k => (k, d: Args.Distance(name.ToLowerInvariant(), k))).OrderBy(x => x.d).First();
+                Error(field, $"{{{name}}} isn't a placeholder here.",
+                    (near.d <= 2 ? $"did you mean {{{near.k}}}? " : "") + $"The placeholders here are {string.Join(" ", allowed.Select(a => "{" + a + "}"))}.");
+            }
+            var stripped = Regex.Replace(text, @"\{[^{}]*\}", "");
+            if (ok && (stripped.Contains('{') || stripped.Contains('}')))
+            {
+                Error(field, $"\"{text}\" has a {{ or }} that doesn't make a placeholder.", "check the braces: placeholders look like {version}.");
+                ok = false;
+            }
+            return ok;
+        }
+
+        /// <summary>True when <paramref name="inner"/> is inside <paramref name="outer"/> (not the same folder).</summary>
+        bool IsUnder(string inner, string outer)
+        {
+            var o = Path.TrimEndingDirectorySeparator(outer);
+            if (!Path.EndsInDirectorySeparator(o)) o += Path.DirectorySeparatorChar; // a drive root keeps its "\"
+            var i = Path.TrimEndingDirectorySeparator(inner);
+            return i.Length > o.Length && i.StartsWith(o, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+
+        bool SamePath(string a, string b) =>
+            string.Equals(Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    }
+
+    static bool IsScriptSource(string name) => name.TrimEnd().EndsWith(".psc", StringComparison.OrdinalIgnoreCase);
+
+    static bool GoodFileName(string name) =>
+        name.Trim().Length > 0 && name.IndexOfAny(new[] { '<', '>', ':', '"', '|', '?', '*' }) < 0 && !name.Any(char.IsControl) && name.Trim() == name;
+
+    static string Kind(JsonElement e) => e.ValueKind switch
+    {
+        JsonValueKind.Object => "object",
+        JsonValueKind.Array => "list",
+        JsonValueKind.String => "string",
+        JsonValueKind.Number => "number",
+        JsonValueKind.True or JsonValueKind.False => "true/false value",
+        JsonValueKind.Null => "null",
+        _ => "value",
+    };
+}
