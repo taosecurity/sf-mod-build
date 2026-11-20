@@ -23,7 +23,9 @@ When the checker isn't installed, `doctor` now points at the renamed project:
 - `doctor` and `check` linked the checker's old GitHub page (taosecurity/sfmodcheck). They now link https://github.com/taosecurity/sf-mod-check/releases.
 - The example in error messages about `--checker` now shows `sf-mod-check.exe` instead of `sfmodcheck.exe`.
 - The README's Example shows a build checked by sf-mod-check 0.9.0, with its current output.
-- The `dotnet new sfmod` template still pins BuildKit 0.4.0 and Mutagen 0.54.4, the versions this release was tested with.
+### Notes
+
+- The `dotnet new sfmod` template is unchanged. It still pins BuildKit 0.4.0 and Mutagen 0.54.4, the versions this release was tested with.
 
 ### Download
 

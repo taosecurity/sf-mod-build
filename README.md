@@ -45,7 +45,7 @@ For AI assistants: step-by-step instructions are in [AGENTS.md](AGENTS.md).
     note: another Starfield install was found (Game Pass (XboxGames folder)): C:\XboxGames\Starfield\Content. To use it instead, give --game "C:\XboxGames\Starfield\Content"
     RESULT: OK, ready to build (with a WARNING: see above)
 
-Then `build` on a small test mod called TestMod, made from the starter, with sf-mod-check 0.9.0 given as the checker (folder names shortened
+Then `build` on a small test mod called TestMod (made from the starter, with its script renamed to TestModQuestScript), with sf-mod-check 0.9.0 given as the checker (folder names shortened
 to `C:\Mods\TestMod` and `C:\Tools`):
 
     > sf-mod-build build --checker C:\Tools\sf-mod-check.exe
