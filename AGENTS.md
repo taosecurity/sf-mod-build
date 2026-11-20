@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.1.0. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -20,11 +20,13 @@ background; this file has what to run.
    `Tools\Papyrus Compiler\PapyrusCompiler.exe`, `Tools\Archive2\Archive2.exe`, `Tools\ContentResources.zip`.
    A Game Pass copy has none of these.
 3. .NET SDK 9.0 or later (`dotnet --list-sdks` shows a line starting `9.` or higher).
-4. Optional: the checker, 0.7.0 or later (the first version with the `release` command), from
-   https://github.com/taosecurity/sfmodcheck/releases. Today it is called sfmodcheck (`sfmodcheck.exe`); it is
-   being renamed sf-mod-check, and sf-mod-build finds either name. Put it on PATH or pass it with `--checker`.
+4. Optional: the checker, sf-mod-check 0.7.0 or later (the first version with the `release` command), from
+   https://github.com/taosecurity/sf-mod-check/releases (`sf-mod-check.exe`).
+   Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
+   Put it on PATH or pass it with `--checker`.
 5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.0]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them).
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.1.0 was tested with BuildKit 0.4.0;
+   don't change the pin unless the person asks.
 
 ## 3. Install
 
@@ -47,11 +49,14 @@ One of:
 
    Or run it without installing: `dotnet run --project src\SfModBuild -c Release -- <command>`.
 
-Then the template, from the repo (or the unzipped template zip from the release):
+Then the template, from the repo:
 
 ```
 dotnet new install templates\sfmod
 ```
+
+Or unzip `sf-mod-build-template-<version>.zip` from the release into a folder of its own and run
+`dotnet new install "<that folder>"` (the zip holds the template's files at its top level).
 
 ## 4. Prove the install works
 
@@ -69,7 +74,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Make a new mod: `dotnet new sfmod -n MyMod --prefix MYM --mod-author "Your Name"` then `cd MyMod`.
 - Check the project file: `sf-mod-build validate`
 - Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`
-- Build with a checker that isn't on PATH: `sf-mod-build build --checker "<path>\sfmodcheck.exe"`
+- Build with a checker that isn't on PATH: `sf-mod-build build --checker "<path>\sf-mod-check.exe"`
 - Fail the build when no checker is found: `sf-mod-build build --require-check`
 - Which game is used: the Steam copy when there is one (the Creation Kit's tools are only there), else Game Pass;
   `doctor` lists any other copy as a note. To pick one, or when none is found, add
