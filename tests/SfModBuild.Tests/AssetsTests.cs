@@ -296,8 +296,45 @@ public class AssetsTests
         var (t, sfmod, _, _) = Setup(json);
         using (t)
         {
-            var problems = Load(sfmod, out _);
-            Assert.Contains(problems, x => x.Field == "zip.files" && x.Problem.Contains("MyMod - Textures.ba2"));
+            var problems = Load(sfmod, out var p);
+            Assert.Null(p);
+            Assert.Contains(problems, x => x.Field == "zip.files[\"Builder/Builder.csproj\"]" && x.Problem.Contains("archive (.ba2)"));
+        }
+    }
+
+    [Theory]
+    [InlineData("dist/Extra.ba2", "Extra.ba2")]       // the builder's own archive
+    [InlineData("Builder/Builder.csproj", "Extra.ba2")] // any file, shipped under an archive's name
+    [InlineData("dist/Extra.ba2", "Extra.bin")]       // an archive, shipped under another name
+    public void ValidateRefusesAnArchiveInZipFiles(string source, string inZip)
+    {
+        var json = Json.Replace("\"assets\":", $"\"zip\": {{ \"files\": {{ \"{source}\": \"{inZip}\" }} }}, \"assets\":");
+        var (t, sfmod, _, env) = Setup(json);
+        using (t)
+        {
+            t.File(Path.Combine("mod", "dist", "Extra.ba2"), "the builder's own archive");
+            var code = RunApp(env, out var output, "validate", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"zip.files[\"{source}\"]", output);
+            Assert.Contains("PROBLEM:", output);
+            Assert.Contains("delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+        }
+    }
+
+    [Fact]
+    public void ZipFilesStillTakesOtherFiles()
+    {
+        var json = Json.Replace("\"assets\":", "\"zip\": { \"files\": { \"Builder/Builder.csproj\": \"Docs/README-{name}.txt\" } }, \"assets\":");
+        var (t, sfmod, _, env) = Setup(json);
+        using (t)
+        {
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "main");
+            t.File(Path.Combine("mod", "dist", "MyMod - Textures.ba2"), "textures");
+            var code = RunApp(env, out var output, "zip", sfmod);
+            Assert.True(code == ExitCodes.Ok, output);
+            using var zip = ZipFile.OpenRead(Mod(t, "MyMod-0.1.0.zip"));
+            Assert.Equal(new[] { "Docs/README-MyMod.txt", "MyMod - Main.ba2", "MyMod - Textures.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
         }
     }
 
@@ -517,30 +554,68 @@ public class AssetsTests
             var code = RunApp(env, out var output, "zip", sfmod);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("zip.files", output);
-            Assert.Contains($"\"dist/{name}\": \"{name}\"", output);
+            Assert.Contains("Fix: delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+            Assert.DoesNotContain("zip.files", output);
             Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
         }
     }
 
-    const string ExtraInZipFiles = "\"assets\": { \"source\": \"Assets\" },\n  \"zip\": { \"files\": { \"dist/Extra.ba2\": \"Extra.ba2\" } }";
-
     [Fact]
-    public void AnArchiveListedInZipFilesShipsOnce()
+    public void ABuilderWrittenArchiveIsRefusedByPackAndZip()
     {
-        var (t, sfmod, game, env) = Setup(WithXbox(Json.Replace("\"assets\": { \"source\": \"Assets\" }", ExtraInZipFiles)));
+        var (t, sfmod, game, env) = Setup(WithXbox(Json));
         using (t)
         {
             CompiledScripts(t);
             t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
-            t.File(Path.Combine("mod", "dist", "Extra.ba2"), "the builder's own archive");
+            var extra = t.File(Path.Combine("mod", "dist", "Extra.ba2"), "the builder's own archive");
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
-            Assert.True(code == ExitCodes.Ok, output);
-            Assert.Equal("the builder's own archive", File.ReadAllText(Mod(t, "creations-out", "Extra.ba2")));
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"{extra} is an archive in dist that this build doesn't make", output);
+            Assert.Contains("Fix: delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+            Assert.Empty(env.Execs);
+            Assert.False(File.Exists(Mod(t, "creations-out", "Extra.ba2")));
+            t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "main");
+            t.File(Path.Combine("mod", "dist", "MyMod - Textures.ba2"), "textures");
             code = RunApp(env, out output, "zip", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"RESULT: CANNOT ZIP ({extra} is an archive in dist that this build doesn't make", output);
+            Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
+        }
+    }
+
+    [Fact]
+    public void ZipNamesTheSameStrayArchiveOnEveryDisk()
+    {
+        var (t, sfmod, _, env) = Setup();
+        using (t)
+        {
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "main");
+            t.File(Path.Combine("mod", "dist", "MyMod - Textures.ba2"), "textures");
+            // NTFS lists "a - Other.ba2" first (it sorts without case); ordinal order puts "B - Other.ba2" first
+            t.File(Path.Combine("mod", "dist", "a - Other.ba2"), "stray");
+            var first = t.File(Path.Combine("mod", "dist", "B - Other.ba2"), "stray");
+            var code = RunApp(env, out var output, "zip", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"RESULT: CANNOT ZIP ({first} is an archive", output);
+        }
+    }
+
+    [Fact]
+    public void ZipTakesARequiredArchiveSpelledInOtherCaseUnderItsOwnName()
+    {
+        var (t, sfmod, _, env) = Setup();
+        using (t)
+        {
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "mymod - main.ba2"), "main, spelled in lower case");
+            t.File(Path.Combine("mod", "dist", "MYMOD - TEXTURES.BA2"), "textures, spelled in upper case");
+            var code = RunApp(env, out var output, "zip", sfmod);
             Assert.True(code == ExitCodes.Ok, output);
+            Assert.Contains("zipped   MyMod - Main.ba2", output);
             using var zip = ZipFile.OpenRead(Mod(t, "MyMod-0.1.0.zip"));
-            Assert.Equal(new[] { "Extra.ba2", "MyMod - Main.ba2", "MyMod - Textures.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
+            Assert.Equal(new[] { "MyMod - Main.ba2", "MyMod - Textures.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
         }
     }
 
@@ -556,7 +631,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT PACK ({other} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("zip.files", output);
+            Assert.Contains("Fix: delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
             Assert.Empty(env.Execs);   // refused before any archive is made
             Assert.False(File.Exists(Mod(t, "creations-out", "Old - Main.ba2")));
         }

@@ -8,8 +8,8 @@
 // and "<plugin> - Main_xbox.ba2" and "<plugin> - Textures_xbox.ba2" are packed there with -compression=XBox. The Xbox
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
 // given (Xbox-format exports, which must cover every PC texture), else the PC textures. Pack deletes the mod's own old
-// archives from dist (names match without case), and with "xbox" on it refuses any other .ba2 in dist that zip.files
-// doesn't list, so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
+// archives from dist (names match without case), and with "xbox" on it refuses any other .ba2 in dist (0.2.0 ships
+// only the archives it builds), so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
 // the mod's own old archives from creations-out too.
 // A scripts-only mod is packed straight from <stage>/Scripts, as before loose files were supported. With loose files,
 // each archive's files are first copied into <stage>/pack/<archive>, so every archive has one root.
@@ -193,7 +193,7 @@ internal static class Pack
         {
             // dist's own files (the plugin, the PC archives, anything else the builder wrote): the same ones the zip
             // takes, so never zips, Papyrus source, half-written zips or the log (archives this build doesn't make
-            // were refused above unless zip.files lists them)
+            // were refused above)
             foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.OrdinalIgnoreCase))
             {
                 if (!Common.Shippable(f)) continue;

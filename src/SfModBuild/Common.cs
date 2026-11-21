@@ -115,30 +115,22 @@ internal static class Common
         return Log.FilePath is not { } log || !Same(Full(log), Full(file));
     }
 
-    /// <summary>True for a .ba2 in dist that this build doesn't make and zip.files doesn't list (an old archive, or one
-    /// the builder or someone else put there): zip and pack refuse it, so a build never passes while silently
-    /// leaving out an archive the modder may have meant to ship.</summary>
+    /// <summary>True for a .ba2 in dist whose name isn't one of the archives this build makes (names match without
+    /// case): an old archive, or one the builder or someone else put there. Zip and pack refuse it, so a build never
+    /// passes while silently leaving out, or shipping, an archive it didn't make.</summary>
     public static bool StrayArchive(SfModProject project, string file) =>
-        UnmadeArchive(project, file) && !ListedInZipFiles(project, file);
-
-    /// <summary>True for a .ba2 whose name isn't one of the archives this build makes (names match without case).</summary>
-    public static bool UnmadeArchive(SfModProject project, string file) =>
         file.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase)
         && !project.ArchiveNames.Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>True when the file is the source of a zip.files entry: the modder asked for it to ship.</summary>
-    public static bool ListedInZipFiles(SfModProject project, string file) =>
-        project.ZipFiles.Any(z => Same(Full(z.Source), Full(file)));
+    /// <summary>The fix for an archive the build doesn't make, in dist or in zip.files.</summary>
+    public const string StrayArchiveFix = "delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds";
 
-    /// <summary>Why a stray archive stops the zip or the Creations set, with the fix: delete it, or list it in zip.files.</summary>
+    /// <summary>Why a stray archive stops the zip or the Creations set, with the fix.</summary>
     public static string StrayArchiveError(SfModProject project, string file, string what)
     {
-        var name = Path.GetFileName(file);
-        var relative = Path.GetRelativePath(project.Folder, file).Replace('\\', '/');
         var made = project.ArchiveNames.Any() ? string.Join(" and ", project.ArchiveNames.Select(n => $"\"{n}\"")) : "none";
-        return $"{file} is an archive in dist that this build doesn't make (the mod's archives are {made}), and {what} would leave it out without a word. "
-            + $"Fix: delete it from dist (sf-mod-build pack deletes the mod's own old archives), or, if it is meant to ship, list it in zip.files of {project.File}, "
-            + $"for example \"zip\": {{ \"files\": {{ \"{relative}\": \"{name}\" }} }}";
+        return $"{file} is an archive in dist that this build doesn't make (the mod's archives are {made}), so {what} can't take it. "
+            + $"Fix: {StrayArchiveFix}";
     }
 
     /// <summary>Every file in the folder with this name, matched without case (a case-sensitive disk can hold

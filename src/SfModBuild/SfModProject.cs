@@ -272,9 +272,9 @@ internal sealed class SfModProject
                 CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
-            var buildsItself = new[] { p.Plugin, p.Ba2Name, p.TexturesBa2Name };
+            // archives are refused per entry above, so only the plugin's name is left to check
             foreach (var (_, inZip) in zipFiles)
-                if (buildsItself.Contains(inZip, StringComparer.OrdinalIgnoreCase))
+                if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase))
                     Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its archives come from dist).", "leave the plugin and the archives out of zip.files.");
             return p;
         }
@@ -693,6 +693,11 @@ internal sealed class SfModProject
                     if (IsScriptSource(e.Name) || IsScriptSource(target))
                     {
                         Error(field, "Papyrus source (.psc) never goes in the zip: players need only the compiled scripts, which are in the BA2.", "remove it from zip.files (share source on GitHub instead, if you like).");
+                        continue;
+                    }
+                    if (e.Name.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase) || target.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Error(field, "it is an archive (.ba2); zip.files takes other files only (README, LICENSE and the like).", $"remove it from zip.files and {Common.StrayArchiveFix}.");
                         continue;
                     }
                     var source = PathOf(e.Name, field);

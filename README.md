@@ -216,7 +216,7 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Runs the builder (`dotnet run -c Release --project <builder> -- <args>`) to write the plugin into dist (dist is emptied first). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make stops it (exit 2, naming the file), unless `zip.files` lists it. |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make stops it (exit 2, naming the file); `zip.files` takes no archives. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
@@ -258,7 +258,7 @@ allowed.
   "zip": {
     "name": "{name}-{version}.zip",            // the zip's name (default {name}-{version}.zip)
     "folder": ".",                             // where the zip is written (default: the sfmod.json folder)
-    "files": { "README.md": "README-{name}.md" }   // extra files: file here -> name inside the zip (never .psc)
+    "files": { "README.md": "README-{name}.md" }   // extra files: file here -> name inside the zip (never .psc or .ba2)
   },
   "check": {
     "checker": "path/to/sf-mod-check.exe",     // default: sf-mod-check or sfmodcheck on PATH
@@ -333,9 +333,20 @@ case), and with `"xbox": true` and nothing left to pack it also deletes the mod'
 creations-out.
 
 Any other `.ba2` in dist that the build doesn't make stops `zip` (and `pack` with `"xbox": true`)
-with a RESULT line naming it, so a build never passes while silently leaving out an archive. Delete it, or, if your
-builder writes it on purpose, list it in `zip.files`, for example `"files": { "dist/Extra.ba2": "Extra.ba2" }`
-(the file must be there when the project is read).
+with a RESULT line naming it, so a build never passes while silently leaving out an archive. The fix is to delete it
+from dist: sf-mod-build 0.2.0 ships only the archives it builds. `zip.files` takes no archives either; `validate`
+reports a `.ba2` there as a PROBLEM. The mod's own archives go into the zip under their usual names, even when dist
+has them spelled in other letter case.
+
+### Limits in 0.2.0
+
+- Archives your builder writes itself aren't supported: put those files in the assets folder instead, so `pack`
+  builds them into the mod's own archives.
+- With `"xbox": true` and nothing left to pack, `pack` deletes only the mod's old archives from creations-out; the
+  plugin and other files there stay as the last build left them.
+- In `doctor`, a value with a closed quote and then a quote that is never closed is cut at its first `;` or `#`,
+  even when that is inside the closed quote. Such a line is broken anyway; `doctor` only warns, and never stops a
+  build.
 
 ## Setup checks in doctor
 

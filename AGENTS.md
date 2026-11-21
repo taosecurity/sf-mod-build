@@ -118,9 +118,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   `<Plugin> - Textures_xbox.ba2` when there are textures).
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
   A `.ba2` in dist that the build doesn't make stops zip (and pack with `"xbox": true`) with exit 2 and a RESULT
-  line naming it, unless `zip.files` lists it; tell the person to delete it, or to list it in `zip.files` if the
-  builder writes it on purpose. pack deletes the mod's own old archives from dist when the mod no longer needs them
-  (and from creations-out when xbox is on and there is nothing to pack).
+  line naming it; tell the person to delete it from dist (sf-mod-build 0.2.0 ships only the archives it builds;
+  `zip.files` takes no archives, and validate reports a `.ba2` there as a PROBLEM). pack deletes the mod's own old
+  archives from dist when the mod no longer needs them (and from creations-out when xbox is on and there is nothing
+  to pack; the other files there stay as the last build left them).
 - A cache of the game's script sources in `%LOCALAPPDATA%\sf-mod-build\vanilla\<sha256>\`.
 - Each command ends with one `RESULT:` line on stdout.
 
@@ -153,3 +154,5 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
 - Don't hand-edit files in dist, stage or creations-out: the next build empties them.
+- Archives the builder writes itself aren't supported in 0.2.0: their files go in the assets folder, so pack builds
+  them into the mod's own archives.

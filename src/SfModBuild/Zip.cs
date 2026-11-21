@@ -1,7 +1,8 @@
 // sf-mod-build zip [sfmod.json]: writes the mod's Vortex/MO2 zip reproducibly: the same files give the same bytes on
 // every run on the same operating system and .NET version (the zip records the system that made it, and another
 // .NET may compress differently). Contents: dist's top-level files (never zips or .psc) plus each zip.files entry
-// under its name in the zip. A .ba2 in dist that this build doesn't make is refused unless zip.files lists it. Entries
+// under its name in the zip. A .ba2 in dist that this build doesn't make is refused (0.2.0 ships only the archives it
+// builds); the mod's own archives go in under their own spelling, whatever their letter case in dist. Entries
 // are sorted by name (ordinal), use forward slashes, a fixed timestamp (2000-01-01 00:00) and deflate. The zip is
 // written to a temp file beside it and then moved into place.
 // Exit 0 when the zip was written, 1 when writing it failed, 2 bad input or setup (no plugin in dist, a missing file,
@@ -53,7 +54,8 @@ internal static class Zip
             return null;
         }
         var list = new List<(string, string)>();
-        foreach (var f in Directory.GetFiles(project.Dist))
+        // sorted, so the stray archive reported is the same on every disk
+        foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.Ordinal))
         {
             var name = Path.GetFileName(f);
             if (!Common.Shippable(f))
@@ -66,11 +68,8 @@ internal static class Zip
                 error = Common.StrayArchiveError(project, f, "the zip");
                 return null;
             }
-            if (Common.UnmadeArchive(project, f))
-            {
-                Log.Write($"zip: {f} goes in under its zip.files name");
-                continue;
-            }
+            // an archive this build makes goes in under its own spelling, even when dist has it in other letter case
+            name = project.ArchiveNames.FirstOrDefault(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase)) ?? name;
             list.Add((f, name));
         }
         foreach (var (source, inZip) in project.ZipFiles)
