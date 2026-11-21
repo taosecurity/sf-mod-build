@@ -1,7 +1,7 @@
 // sf-mod-build zip [sfmod.json]: writes the mod's Vortex/MO2 zip reproducibly: the same files give the same bytes on
 // every run on the same operating system and .NET version (the zip records the system that made it, and another
-// .NET may compress differently). Contents: dist's top-level files (never zips or .psc) plus each zip.files entry under
-// its name in the zip. Entries are sorted by name (ordinal), use forward slashes, a fixed timestamp
+// .NET may compress differently). Contents: dist's top-level files (never zips or .psc, and never a .ba2 this build
+// doesn't make, which gets a WARNING) plus each zip.files entry under its name in the zip. Entries are sorted by name (ordinal), use forward slashes, a fixed timestamp
 // (2000-01-01 00:00) and deflate. The zip is written to a temp file beside it and then moved into place.
 // Exit 0 when the zip was written, 1 when writing it failed, 2 bad input or setup (no plugin in dist, a missing file,
 // two files with the same name).
@@ -32,9 +32,14 @@ internal static class Zip
 
     /// <summary>What goes in the zip, sorted by name in the zip: (full path here, name in the zip). Null (with the
     /// reason) when something is missing or two files would get the same name.</summary>
-    public static List<(string Source, string NameInZip)>? Entries(SfModProject project, out string? error)
+    public static List<(string Source, string NameInZip)>? Entries(SfModProject project, out string? error) =>
+        Entries(project, out error, out _);
+
+    /// <summary>As above; leftOut gets each .ba2 in dist that this build doesn't make, which the zip leaves out.</summary>
+    public static List<(string Source, string NameInZip)>? Entries(SfModProject project, out string? error, out List<string> leftOut)
     {
         error = null;
+        leftOut = new List<string>();
         var plugin = Path.Combine(project.Dist, project.Plugin);
         if (!File.Exists(plugin))
         {
@@ -58,6 +63,12 @@ internal static class Zip
             if (!Common.Shippable(f))
             {
                 Log.Write($"zip: left out {f}");
+                continue;
+            }
+            if (Common.StrayArchive(project, f))
+            {
+                Log.Write($"zip: left out {f} (an archive this build doesn't make)");
+                leftOut.Add(f);
                 continue;
             }
             list.Add((f, name));
@@ -84,12 +95,14 @@ internal static class Zip
 
     public static int Write(SfModProject project, TextWriter stdout)
     {
-        var entries = Entries(project, out var error);
+        var entries = Entries(project, out var error, out var leftOut);
         if (entries == null)
         {
             stdout.WriteLine($"RESULT: CANNOT ZIP ({error}).");
             return ExitCodes.BadInput;
         }
+        foreach (var f in leftOut)
+            stdout.WriteLine($"WARNING: {f} is left out of the zip: this build doesn't make an archive by that name (the mod's archives are {(project.ArchiveNames.Any() ? string.Join(" and ", project.ArchiveNames.Select(n => $"\"{n}\"")) : "none")}). Fix: delete it from dist, or run sf-mod-build pack (or build) to remake the archives.");
         var zipPath = Path.GetFullPath(project.ZipPath);
         var temp = zipPath + PartialSuffix;
         try

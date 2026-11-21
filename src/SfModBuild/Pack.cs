@@ -7,7 +7,8 @@
 // With "xbox": true it also makes the Creations upload set: creations-out is emptied, dist's files are copied into it,
 // and "<plugin> - Main_xbox.ba2" and "<plugin> - Textures_xbox.ba2" are packed there with -compression=XBox. The Xbox
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
-// given (Xbox-format exports), else the PC textures.
+// given (Xbox-format exports, which must cover every PC texture), else the PC textures. A .ba2 in dist that this build
+// doesn't make is never copied into creations-out (and pack deletes the mod's own old archives from dist).
 // A scripts-only mod is packed straight from <stage>/Scripts, as before loose files were supported. With loose files,
 // each archive's files are first copied into <stage>/pack/<archive>, so every archive has one root.
 // Exit 0 when every archive was made (or there is nothing to pack), 1 when Archive2 failed, 2 bad input or setup.
@@ -31,6 +32,8 @@ internal static class Pack
         if (project == null) return ExitCodes.BadInput;
         if (!project.HasMainArchive && !project.HasTexturesArchive)
         {
+            // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip
+            if (DeleteStale(project, stdout) is { } code) return code;
             stdout.WriteLine($"RESULT: OK, nothing to pack (the project has no scripts{(project.Assets != null ? " and its assets folder has no files" : " and no assets")})");
             return ExitCodes.Ok;
         }
@@ -120,10 +123,7 @@ internal static class Pack
             stdout.WriteLine($"RESULT: CANNOT PACK (the dist folder {project.Dist} can't be made: {e.Message}).");
             return ExitCodes.BadInput;
         }
-        // An archive this build doesn't make any more (the mod's textures were removed) must not stay in dist and
-        // reach the zip.
-        foreach (var stale in new[] { project.Ba2Name, project.TexturesBa2Name }.Except(project.ArchiveNames))
-            if (DeleteOld(Path.Combine(project.Dist, stale), stdout) is { } code) return code;
+        if (DeleteStale(project, stdout) is { } staleCode) return staleCode;
 
         // Where each archive's files come from
         string? mainSource = null, mainRoot = null, texSource = null, xboxTexSource = null;
@@ -181,6 +181,11 @@ internal static class Pack
             foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.OrdinalIgnoreCase))
             {
                 if (!Common.Shippable(f)) continue;
+                if (Common.StrayArchive(project, f))
+                {
+                    stdout.WriteLine($"WARNING: {f} is left out of {project.CreationsOut}: this build doesn't make an archive by that name. Fix: delete it from dist.");
+                    continue;
+                }
                 File.Copy(f, Path.Combine(project.CreationsOut, Path.GetFileName(f)));
                 Log.Write($"copied {f} into {project.CreationsOut}");
             }
@@ -232,7 +237,8 @@ internal static class Pack
             if (assets.General.Count > 0)
             {
                 main = Path.Combine(pack, "main");
-                var taken = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                // Paths compare without case: the game and Windows treat Meshes\Box.nif and meshes\box.nif as one file
+                var taken = new Dictionary<string, (string Full, bool Script)>(StringComparer.OrdinalIgnoreCase);
                 if (project.Scripts != null)
                 {
                     var compiled = Path.Combine(project.Stage, "Scripts");
@@ -240,27 +246,34 @@ internal static class Pack
                     {
                         var rel = Path.Combine("Scripts", Path.GetRelativePath(compiled, pex));
                         Copy(pex, Path.Combine(main, rel));
-                        taken[rel] = pex;
+                        taken[rel] = (pex, true);
                     }
                 }
                 foreach (var f in assets.General)
                 {
                     if (taken.TryGetValue(f.Relative, out var other))
-                        return $"{f.Full} in assets.source would be {f.Relative} in the archive, which is also the compiled script {other}. Fix: remove the loose copy from the assets folder; the script is compiled from its source";
+                        return other.Script
+                            ? $"{f.Full} in assets.source would be {f.Relative} in the archive, which is also the compiled script {other.Full}. Fix: remove the loose copy from the assets folder; the script is compiled from its source"
+                            : CaseTwin("assets.source", f.Full, other.Full);
                     Copy(f.Full, Path.Combine(main, f.Relative));
-                    taken[f.Relative] = f.Full;
+                    taken[f.Relative] = (f.Full, false);
                 }
             }
             if (assets.Textures.Count > 0)
             {
                 textures = Path.Combine(pack, "textures");
-                foreach (var f in assets.Textures) Copy(f.Full, Path.Combine(textures, f.Relative));
+                if (StageTextures(assets.Textures, textures, "assets.source") is { } twin) return twin;
             }
             if (project.Xbox && assets.XboxTextures != null && assets.Textures.Count > 0)
             {
+                // The loader refuses these; checked again so an empty folder never reaches Archive2
+                if (assets.XboxTextureFiles.Count == 0)
+                    return $"assets.xboxTextures {assets.XboxTextures} holds no .dds textures, so the Xbox texture archive would be empty. Fix: put the Xbox-format .dds files there, or remove assets.xboxTextures to pack the PC textures for Xbox too";
+                var xb = new HashSet<string>(assets.XboxTextureFiles.Select(f => f.Relative), StringComparer.OrdinalIgnoreCase);
+                if (assets.Textures.FirstOrDefault(f => !xb.Contains(f.Relative)) is { } lacking)
+                    return $"assets.xboxTextures {assets.XboxTextures} has no Xbox copy of {lacking.Relative}, so it would be missing on Xbox. Fix: export an Xbox version of each PC texture, or remove assets.xboxTextures to pack the PC textures for Xbox too";
                 xboxTextures = Path.Combine(pack, "textures-xbox");
-                foreach (var f in assets.XboxTextureFiles) Copy(f.Full, Path.Combine(xboxTextures, f.Relative));
-                Directory.CreateDirectory(xboxTextures); // an empty Xbox folder still gives Archive2 a folder to read
+                if (StageTextures(assets.XboxTextureFiles, xboxTextures, "assets.xboxTextures") is { } twin) return twin;
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -271,11 +284,42 @@ internal static class Pack
         return null;
     }
 
+    /// <summary>Copies the textures into the folder. Null when done, else why not: two of them differ only in case.</summary>
+    static string? StageTextures(IReadOnlyList<SfModProject.AssetFile> files, string into, string field)
+    {
+        var taken = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in files)
+        {
+            if (taken.TryGetValue(f.Relative, out var other)) return CaseTwin(field, f.Full, other);
+            Copy(f.Full, Path.Combine(into, f.Relative));
+            taken[f.Relative] = f.Full;
+        }
+        return null;
+    }
+
+    /// <summary>Two loose files whose paths differ only in case (possible on Linux and in case-sensitive folders).</summary>
+    static string CaseTwin(string field, string file, string other) =>
+        $"{file} and {other} in {field} differ only in case, so they would be one file in the archive (the game and Windows don't tell them apart). Fix: keep one of them and delete or rename the other";
+
     static void Copy(string from, string to)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
         File.Copy(from, to);
         Log.Write($"staged {from} -> {to}");
+    }
+
+    /// <summary>Deletes from dist each archive this build doesn't make any more (the mod's textures or scripts were
+    /// removed), so it can't reach the zip. Null when done, else the exit code to return.</summary>
+    static int? DeleteStale(SfModProject project, TextWriter stdout)
+    {
+        foreach (var stale in new[] { project.Ba2Name, project.TexturesBa2Name }.Except(project.ArchiveNames))
+        {
+            var path = Path.Combine(project.Dist, stale);
+            if (!File.Exists(path)) continue;
+            if (DeleteOld(path, stdout) is { } code) return code;
+            stdout.WriteLine($"deleted  {path} (from an earlier build; this build doesn't make it)");
+        }
+        return null;
     }
 
     static int? DeleteOld(string ba2, TextWriter stdout)

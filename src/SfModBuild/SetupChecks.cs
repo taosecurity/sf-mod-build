@@ -25,6 +25,26 @@ internal static class SetupChecks
     static bool IsOne(string v) => v.Split(new[] { ' ', '\t', ';', '#' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() == "1";
     static bool IsZero(string v) => v.Split(new[] { ' ', '\t', ';', '#' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() == "0";
 
+    /// <summary>The value without a trailing ; or # comment (one inside double quotes is part of the value).</summary>
+    public static string WithoutComment(string v)
+    {
+        var quoted = false;
+        for (var i = 0; i < v.Length; i++)
+        {
+            if (v[i] == '"') quoted = !quoted;
+            else if (!quoted && v[i] is ';' or '#') return v[..i].TrimEnd();
+        }
+        return v.Trim();
+    }
+
+    static bool IsScriptSourceFolder(string v) =>
+        string.Equals(WithoutComment(v).Trim().Trim('"').Replace('\\', '/').TrimEnd('/'), "Data/Scripts/Source", StringComparison.OrdinalIgnoreCase);
+
+    // Loose files: bInvalidateOlderFiles=1 under [Archive] is the one line Bethesda's pages ask for, in both
+    // StarfieldCustom.ini and CreationKitCustom.ini ("Creation Kit Setup and Installation", "Initialization (.ini)
+    // Settings" and "Creating Overlays and World Spaces" on the official Creation Kit wiki, checked 2026-11-20).
+    // sResourceDataDirsFinal is not asked for: the official INI page says to avoid it and that it only works when
+    // bInvalidateOlderFiles is off (and the older and current wiki texts disagree on what an empty value does).
     static readonly Want[] GameWants =
     {
         new("Papyrus", "bEnableLogging", IsOne, "bEnableLogging=1"),
@@ -36,8 +56,7 @@ internal static class SetupChecks
     static readonly Want[] CkWants =
     {
         new("Materials", "bUseCompiledDB", IsZero, "bUseCompiledDB=0"),
-        new("Papyrus", "sScriptSourceFolder", v => string.Equals(v.Trim().Trim('"').Replace('\\', '/').TrimEnd('/'), "Data/Scripts/Source", StringComparison.OrdinalIgnoreCase),
-            "sScriptSourceFolder=\"Data/Scripts/Source\""),
+        new("Papyrus", "sScriptSourceFolder", IsScriptSourceFolder, "sScriptSourceFolder=\"Data/Scripts/Source\""),
         new("Archive", "bInvalidateOlderFiles", IsOne, "bInvalidateOlderFiles=1"),
     };
 
@@ -62,8 +81,10 @@ internal static class SetupChecks
         Log.Write($"My Games folder: {myGames ?? "(not known)"}");
         list.Add(myGames == null
             ? new SetupCheck("StarfieldCustom.ini (Papyrus log, loose files)", false, null,
-                "not checked: the Documents folder isn't known", GameFor,
-                new[] { "give the folder that holds StarfieldCustom.ini with --my-games <folder> (Documents\\My Games\\Starfield)" })
+                env.IsWindows ? "not checked: the Documents folder isn't known"
+                    : "not checked: Starfield wasn't found, so its Proton folder (which holds My Games/Starfield) isn't known", GameFor,
+                env.IsWindows ? new[] { "give the folder that holds StarfieldCustom.ini with --my-games <folder> (Documents\\My Games\\Starfield)" }
+                    : new[] { "give the game's folder with --game <folder> (its Proton folder is found from it), or the folder that holds StarfieldCustom.ini with --my-games <folder>" })
             : IniCheck("StarfieldCustom.ini (Papyrus log, loose files)", System.IO.Path.Combine(myGames, "StarfieldCustom.ini"), GameWants, GameFor,
                 "start the game once so it makes the folder, then make the file"));
         if (game != null)

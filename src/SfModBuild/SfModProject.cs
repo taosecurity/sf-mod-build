@@ -346,8 +346,17 @@ internal sealed class SfModProject
                 var xb = new HashSet<string>(xboxFiles.Select(t => t.Relative), StringComparer.OrdinalIgnoreCase);
                 var missing = pc.Where(x => !xb.Contains(x)).Order(StringComparer.OrdinalIgnoreCase).ToList();
                 var extra = xb.Where(x => !pc.Contains(x)).Order(StringComparer.OrdinalIgnoreCase).ToList();
-                if (missing.Count > 0)
-                    Warn("assets.xboxTextures", $"{missing.Count} PC texture(s) have no Xbox copy, so they would be missing on Xbox: {Few(missing)}.", "export an Xbox version of each, or remove assets.xboxTextures to pack the PC textures for Xbox too.");
+                // With xbox on, the given folder is the whole Xbox texture archive: an empty one would be packed as
+                // an empty archive, and a texture it lacks is simply missing on Xbox (the console never reads the PC
+                // archive). Filling the gaps from the PC set would mix formats without a word, so both are refused.
+                if (xbox && xboxFiles.Count == 0)
+                    Error("assets.xboxTextures", $"{xboxFolder} holds no .dds textures, so the Xbox texture archive would be empty.", "put the Xbox-format .dds files there (laid out like the PC textures), or remove assets.xboxTextures to pack the PC textures for Xbox too.");
+                else if (missing.Count > 0)
+                {
+                    var (problem, fix) = ($"{missing.Count} PC texture(s) have no Xbox copy, so they would be missing on Xbox: {Few(missing)}.", "export an Xbox version of each, or remove assets.xboxTextures to pack the PC textures for Xbox too.");
+                    if (xbox) Error("assets.xboxTextures", problem, fix);
+                    else Warn("assets.xboxTextures", problem, fix);
+                }
                 if (extra.Count > 0)
                     Warn("assets.xboxTextures", $"{extra.Count} Xbox texture(s) have no PC copy in assets.source: {Few(extra)}.", "check the paths match the PC textures, folder for folder.");
             }
@@ -368,7 +377,8 @@ internal sealed class SfModProject
                 if (required) Error(field, "it is missing.", $"add \"{name}\": \"Assets\" (the folder that holds the mod's loose files, laid out like Data).");
                 return null;
             }
-            var full = Folder(a, name, "Assets", field);
+            var example = name == "xboxTextures" ? "Assets-xbox" : "Assets";
+            var full = Folder(a, name, example, field);
             if (full == null) return null;
             if (!Directory.Exists(full))
             {
@@ -377,19 +387,19 @@ internal sealed class SfModProject
             }
             if (SamePath(full, folder) || IsUnder(folder, full))
             {
-                Error(field, $"{full} is or holds the mod's own folder, so the project file, the builder and the build output would be packed.", "give a folder of its own inside the mod, for example \"Assets\".");
+                Error(field, $"{full} is or holds the mod's own folder, so the project file, the builder and the build output would be packed.", $"give a folder of its own inside the mod, for example \"{example}\".");
                 return null;
             }
             foreach (var (outName, outPath) in outputs)
                 if (SamePath(full, outPath) || IsUnder(full, outPath) || IsUnder(outPath, full))
                 {
-                    Error(field, $"{full} is, holds or is inside {outName} ({outPath}), which the build empties.", "keep the loose files in a folder of their own, for example \"Assets\".");
+                    Error(field, $"{full} is, holds or is inside {outName} ({outPath}), which the build empties.", $"keep the loose files in a folder of their own, for example \"{example}\".");
                     return null;
                 }
             foreach (var (what, path) in mustNotHold)
                 if (SamePath(full, path) || IsUnder(path, full))
                 {
-                    Error(field, $"{full} is or holds {what} ({path}), whose files would be packed.", "give a folder that holds only the loose files, for example \"Assets\".");
+                    Error(field, $"{full} is or holds {what} ({path}), whose files would be packed.", $"give a folder that holds only the loose files, for example \"{example}\".");
                     return null;
                 }
             return full;

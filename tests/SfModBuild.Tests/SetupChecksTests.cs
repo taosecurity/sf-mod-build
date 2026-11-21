@@ -128,6 +128,9 @@ public class SetupChecksTests
     [InlineData("sScriptSourceFolder=Data\\Scripts\\Source\\", true)]
     [InlineData("sScriptSourceFolder=\"data/scripts/source/\"", true)]
     [InlineData("sScriptSourceFolder=\"../Source/Scripts/\"", false)]
+    [InlineData("sScriptSourceFolder=\"Data/Scripts/Source\" ; the Creation Kit's default", true)]
+    [InlineData("sScriptSourceFolder=Data/Scripts/Source/ # set by hand", true)]
+    [InlineData("sScriptSourceFolder=\"Data/Scripts;Source\"", false)]
     public void ScriptSourceFolderAcceptsEitherSlash(string line, bool ok)
     {
         var (t, env, game, _) = Setup();
@@ -194,5 +197,39 @@ public class SetupChecksTests
         var c = SetupChecks.Run(new GameInstall(Fake.Game(t, "G"), "Steam", "test"), null, env).Single(s => s.Name.StartsWith("StarfieldCustom.ini", StringComparison.Ordinal));
         Assert.False(c.Ok);
         Assert.Contains("--my-games", c.Fix[0]);
+    }
+
+    [Fact]
+    public void LinuxWithNoGameSaysTheGameWasntFound()
+    {
+        var env = new FakeHostEnv { IsWindows = false };
+        var c = SetupChecks.Run(null, null, env).Single(s => s.Name.StartsWith("StarfieldCustom.ini", StringComparison.Ordinal));
+        Assert.False(c.Ok);
+        Assert.Contains("Starfield wasn't found", c.Detail);
+        Assert.DoesNotContain("Documents folder", c.Detail);
+        Assert.Contains("--game", c.Fix[0]);
+        Assert.Contains("--my-games", c.Fix[0]);
+    }
+
+    [Fact]
+    public void WithoutCommentKeepsQuotedSemicolons()
+    {
+        Assert.Equal("1", SetupChecks.WithoutComment("1 ; on"));
+        Assert.Equal("\"a;b\"", SetupChecks.WithoutComment("\"a;b\" # note"));
+        Assert.Equal("x", SetupChecks.WithoutComment("x"));
+    }
+
+    [Fact]
+    public void LooseFilesNeedOnlyTheArchiveLineBethesdaAsksFor()
+    {
+        // Bethesda's setup and INI pages ask for bInvalidateOlderFiles=1 alone and warn against sResourceDataDirsFinal
+        var (t, env, game, myGames) = Setup();
+        using (t)
+        {
+            Write(Path.Combine(myGames, "StarfieldCustom.ini"), GoodGameIni);
+            var c = Find(Doctor.Examine(game, null, env, out _)!, "StarfieldCustom.ini");
+            Assert.True(c.Ok, c.Detail);
+            Assert.DoesNotContain("sResourceDataDirsFinal", c.Detail);
+        }
     }
 }

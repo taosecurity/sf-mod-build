@@ -216,7 +216,7 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Runs the builder (`dotnet run -c Release --project <builder> -- <args>`) to write the plugin into dist (dist is emptied first). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`, and never a `.ba2` the build doesn't make (it is left out with a WARNING naming it). |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
@@ -301,10 +301,15 @@ plugin and the materials point.
 
 With `"xbox": true`, the Creations set gets its own `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`.
 The Xbox texture archive is always a separate archive. By default it holds the same PC textures, which is what
-modders do today. If you export Xbox versions of your textures (the Creation Kit's AssetWatcher does this), put them
-in a second folder laid out the same way and name it with `"xboxTextures": "Assets-xbox"`; `validate` warns when a
-texture is in one folder and not the other. A PC `.wem` plays silent on Xbox and PlayStation 5, so `validate` warns
-about sounds when `xbox` is on.
+modders do today.
+
+If you export Xbox versions of your textures (the Creation Kit's AssetWatcher does this), put them
+in a second folder laid out the same way and name it with `"xboxTextures": "Assets-xbox"`. That folder must then
+hold an Xbox copy of every PC texture: `validate` and `pack` refuse a folder with no `.dds` in it, and a folder
+that lacks a PC texture, because the console never reads the PC archive and that texture would be missing on Xbox.
+An Xbox texture with no PC copy is only a warning.
+
+A PC `.wem` plays silent on Xbox and PlayStation 5, so `validate` warns about sounds when `xbox` is on.
 
 `validate` shows what each archive will get (folder names shortened):
 
@@ -321,7 +326,10 @@ about sounds when `xbox` is on.
     RESULT: OK
 
 `pack` copies each archive's files into `<stage>\pack\` first, so each archive has one root folder. A mod with
-scripts and no loose files is packed exactly as before.
+scripts and no loose files is packed exactly as before. Two loose files whose paths differ only in case (possible on
+Linux) are refused, because the game and Windows treat them as one file. When the mod no longer has textures or
+scripts, `pack` deletes the old archive from dist, and `zip` and the Creations set leave out any `.ba2` in dist that
+the build doesn't make, with a WARNING naming it.
 
 ## Setup checks in doctor
 
@@ -337,9 +345,16 @@ so each is OK or a WARNING with the exact lines to add:
 - **The unpacked script sources** in `Data\Scripts\Source`, which the Creation Kit needs. sf-mod-build itself
   unpacks its own copy, so it doesn't need them.
 
+For loose files, `bInvalidateOlderFiles=1` under `[Archive]` in both files is the one line Bethesda asks for (the
+official Creation Kit wiki's "Creation Kit Setup and Installation", "Initialization (.ini) Settings" and "Creating
+Overlays and World Spaces" pages). `doctor` doesn't ask for `sResourceDataDirsFinal`: the official INI page says to
+avoid it, and that it only works when `bInvalidateOlderFiles` is off. A comment after a value (`; ...` or `# ...`)
+is ignored.
+
 `doctor` only reads these files; it never writes an INI file. If Mod Organizer 2 keeps INI files per profile, give
 the profile's folder with `--my-games <folder>`. On Linux the default is the game's Proton folder
-(`steamapps/compatdata/1716740/pfx/drive_c/users/steamuser/Documents/My Games/Starfield`).
+(`steamapps/compatdata/1716740/pfx/drive_c/users/steamuser/Documents/My Games/Starfield`). When the game isn't
+found there, `doctor` says so; give `--game <folder>` or `--my-games <folder>`.
 
 A real run with a StarfieldCustom.ini that turns on only `bEnableLogging` (folder names shortened):
 

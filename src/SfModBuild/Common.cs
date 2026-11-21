@@ -115,6 +115,12 @@ internal static class Common
         return Log.FilePath is not { } log || !Same(Full(log), Full(file));
     }
 
+    /// <summary>True for a .ba2 in dist that this build doesn't make (an old archive, or one copied in by hand): the
+    /// zip and the Creations set leave it out, so a stale archive never ships.</summary>
+    public static bool StrayArchive(SfModProject project, string file) =>
+        file.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase)
+        && !project.ArchiveNames.Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Deletes the folder (when there) and makes it again, empty. Null when done, else why it failed.</summary>
     public static string? Empty(string folder)
     {
