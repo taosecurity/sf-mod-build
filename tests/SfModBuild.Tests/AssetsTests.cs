@@ -499,8 +499,10 @@ public class AssetsTests
         }
     }
 
-    [Fact]
-    public void ZipLeavesOutArchivesThisBuildDoesntMake()
+    [Theory]
+    [InlineData("MyMod - Main.ba2")]          // the mod's own archive from an earlier build
+    [InlineData("Someone Else - Main.ba2")]   // one the builder or someone else put there
+    public void ZipRefusesArchivesThisBuildDoesntMake(string name)
     {
         var json = Json.Replace("\"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] },", "");
         var (t, sfmod, _, env) = Setup(json, withScript: false);
@@ -511,19 +513,39 @@ public class AssetsTests
             File.Delete(Mod(t, "Assets", "Materials", "MyMod", "Box.mat"));
             t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
             t.File(Path.Combine("mod", "dist", "MyMod - Textures.ba2"), "textures");
-            var stale = t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "an old main");
-            var other = t.File(Path.Combine("mod", "dist", "Someone Else - Main.ba2"), "copied in by hand");
+            var stray = t.File(Path.Combine("mod", "dist", name), "not made by this build");
             var code = RunApp(env, out var output, "zip", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
+            Assert.Contains("zip.files", output);
+            Assert.Contains($"\"dist/{name}\": \"{name}\"", output);
+            Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
+        }
+    }
+
+    const string ExtraInZipFiles = "\"assets\": { \"source\": \"Assets\" },\n  \"zip\": { \"files\": { \"dist/Extra.ba2\": \"Extra.ba2\" } }";
+
+    [Fact]
+    public void AnArchiveListedInZipFilesShipsOnce()
+    {
+        var (t, sfmod, game, env) = Setup(WithXbox(Json.Replace("\"assets\": { \"source\": \"Assets\" }", ExtraInZipFiles)));
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "Extra.ba2"), "the builder's own archive");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("the builder's own archive", File.ReadAllText(Mod(t, "creations-out", "Extra.ba2")));
+            code = RunApp(env, out output, "zip", sfmod);
             Assert.True(code == ExitCodes.Ok, output);
             using var zip = ZipFile.OpenRead(Mod(t, "MyMod-0.1.0.zip"));
-            Assert.Equal(new[] { "MyMod - Textures.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
-            Assert.Contains($"WARNING: {stale} is left out of the zip", output);
-            Assert.Contains($"WARNING: {other} is left out of the zip", output);
+            Assert.Equal(new[] { "Extra.ba2", "MyMod - Main.ba2", "MyMod - Textures.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
         }
     }
 
     [Fact]
-    public void TheCreationsSetLeavesOutArchivesThisBuildDoesntMake()
+    public void TheCreationsSetRefusesArchivesThisBuildDoesntMake()
     {
         var (t, sfmod, game, env) = Setup(WithXbox(Json));
         using (t)
@@ -532,9 +554,116 @@ public class AssetsTests
             t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
             var other = t.File(Path.Combine("mod", "dist", "Old - Main.ba2"), "copied in by hand");
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
-            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"RESULT: CANNOT PACK ({other} is an archive in dist that this build doesn't make", output);
+            Assert.Contains("zip.files", output);
+            Assert.Empty(env.Execs);   // refused before any archive is made
             Assert.False(File.Exists(Mod(t, "creations-out", "Old - Main.ba2")));
-            Assert.Contains($"WARNING: {other} is left out of", output);
+        }
+    }
+
+    [Fact]
+    public void WithoutXboxPackLeavesTheStrayArchiveToZip()
+    {
+        var (t, sfmod, game, env) = Setup();
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "Old - Main.ba2"), "copied in by hand");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+        }
+    }
+
+    [Fact]
+    public void NothingToPackWithXboxDeletesTheModsOldCreationsArchives()
+    {
+        var json = WithXbox(Json.Replace("\"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] },", "")
+            .Replace(",\n  \"assets\": { \"source\": \"Assets\" }", "").Replace(",\r\n  \"assets\": { \"source\": \"Assets\" }", ""));
+        var (t, sfmod, game, env) = Setup(json, withScript: false);
+        using (t)
+        {
+            var old = new[] { "MyMod - Main_xbox.ba2", "MyMod - Textures_xbox.ba2", "MyMod - Main.ba2", "MyMod - Textures.ba2" }
+                .Select(n => t.File(Path.Combine("mod", "creations-out", n), "old")).ToList();
+            var plugin = t.File(Path.Combine("mod", "creations-out", "MyMod.esm"), "the plugin");
+            var other = t.File(Path.Combine("mod", "creations-out", "Someone Else - Main_xbox.ba2"), "not the mod's");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Contains("nothing to pack", output);
+            foreach (var f in old) Assert.False(File.Exists(f), f);
+            Assert.True(File.Exists(plugin));
+            Assert.True(File.Exists(other));
+            Assert.Empty(env.Execs);
+        }
+    }
+
+    [Fact]
+    public void AnEmptyXboxTextureFolderIsFineWhenTheModHasNoTextures()
+    {
+        var json = WithXbox(Json.Replace("{ \"source\": \"Assets\" }", "{ \"source\": \"Assets\", \"xboxTextures\": \"AssetsXbox\" }"));
+        var (t, sfmod, game, env) = Setup(json);
+        using (t)
+        {
+            File.Delete(Mod(t, "Assets", "Textures", "MyMod", "Box_color.dds"));
+            t.Dir(Path.Combine("mod", "AssetsXbox"));
+            var problems = Load(sfmod, out var p);
+            Assert.True(p != null, string.Join("\n", problems.Select(x => x.Format(sfmod))));
+            Assert.False(p!.HasTexturesArchive);
+            Assert.Equal(ExitCodes.Ok, RunApp(env, out var validated, "validate", sfmod));
+            CompiledScripts(t);
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal(2, env.Execs.Count);   // Main and Main_xbox only
+        }
+    }
+
+    [Fact]
+    public void ValidateNamesLooseFilesThatDifferOnlyInCase()
+    {
+        var (t, sfmod, game, env) = Setup();
+        using (t)
+        {
+            var dir = t.CaseSensitiveDir(Path.Combine("mod", "Assets", "Meshes", "Twins"));
+            if (dir == null) return;   // this machine can't hold two names that differ only in case
+            var first = t.File(Path.Combine("mod", "Assets", "Meshes", "Twins", "Box.nif"), "1");
+            var second = t.File(Path.Combine("mod", "Assets", "Meshes", "Twins", "box.nif"), "2");
+            var code = RunApp(env, out var output, "validate", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains("PROBLEM:", output);
+            Assert.Contains("differ only in case", output);
+            Assert.Contains(first, output);
+            Assert.Contains(second, output);
+            CompiledScripts(t);
+            code = RunApp(env, out output, "pack", sfmod, "--game", game);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Empty(env.Execs);
+        }
+    }
+
+    [Fact]
+    public void ArchiveNamesInDistMatchWithoutCase()
+    {
+        var json = Json.Replace("\"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] },", "");
+        var (t, sfmod, game, env) = Setup(json, withScript: false);
+        using (t)
+        {
+            var dist = t.CaseSensitiveDir(Path.Combine("mod", "dist"));
+            if (dist == null) return;   // this machine can't hold two names that differ only in case
+            // no meshes or materials any more, so the build makes only the texture archive
+            File.Delete(Mod(t, "Assets", "Meshes", "MyMod", "Box.nif"));
+            File.Delete(Mod(t, "Assets", "Materials", "MyMod", "Box.mat"));
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            var oldMain = t.File(Path.Combine("mod", "dist", "mymod - main.ba2"), "an old main, spelled in lower case");
+            var oldTextures = t.File(Path.Combine("mod", "dist", "mymod - textures.ba2"), "old textures, spelled in lower case");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.False(File.Exists(oldMain));
+            Assert.False(File.Exists(oldTextures));
+            Assert.True(File.Exists(Mod(t, "dist", "MyMod - Textures.ba2")));
+            // zip finds the texture archive however it is spelled
+            File.Move(Mod(t, "dist", "MyMod - Textures.ba2"), Mod(t, "dist", "mymod - textures.ba2"));
+            code = RunApp(env, out output, "zip", sfmod);
+            Assert.True(code == ExitCodes.Ok, output);
         }
     }
 

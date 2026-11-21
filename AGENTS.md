@@ -88,8 +88,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   `sf-mod-build build`. Textures go to `<Plugin> - Textures.ba2`, the rest to `<Plugin> - Main.ba2`.
 - Xbox-format textures for the Creations set: add `"xboxTextures": "Assets-xbox"` (a second folder with the same
   layout) to the assets section, with `"xbox": true`. It must hold an Xbox copy of every PC texture (validate and
-  pack refuse an empty folder or a missing copy). Without it, `<Plugin> - Textures_xbox.ba2` holds the PC
-  textures.
+  pack refuse an empty folder or a missing copy when the mod has PC textures). Without it,
+  `<Plugin> - Textures_xbox.ba2` holds the PC textures.
 - Check the INI settings of a Mod Organizer 2 profile: `sf-mod-build doctor --my-games "<profile folder>"`.
 - One step at a time: `sf-mod-build compile`, `sf-mod-build plugin`, `sf-mod-build pack`, `sf-mod-build zip`,
   `sf-mod-build check` (each needs the steps before it to have run).
@@ -117,8 +117,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - With `"xbox": true`: `creations-out\` with dist's files plus `<Plugin> - Main_xbox.ba2` (and
   `<Plugin> - Textures_xbox.ba2` when there are textures).
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
-  A `.ba2` in dist that the build doesn't make is left out of the zip and creations-out, with a WARNING; pack
-  deletes the mod's own old archives from dist when the mod no longer needs them.
+  A `.ba2` in dist that the build doesn't make stops zip (and pack with `"xbox": true`) with exit 2 and a RESULT
+  line naming it, unless `zip.files` lists it; tell the person to delete it, or to list it in `zip.files` if the
+  builder writes it on purpose. pack deletes the mod's own old archives from dist when the mod no longer needs them
+  (and from creations-out when xbox is on and there is nothing to pack).
 - A cache of the game's script sources in `%LOCALAPPDATA%\sf-mod-build\vanilla\<sha256>\`.
 - Each command ends with one `RESULT:` line on stdout.
 
@@ -126,7 +128,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - 0: OK (warnings allowed).
 - 1: the build or the check failed (compiler errors, builder failure, checker found problems).
-- 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder).
+- 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder, an archive in dist the build doesn't make).
 
 ## 9. The log
 

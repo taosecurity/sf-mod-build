@@ -115,11 +115,38 @@ internal static class Common
         return Log.FilePath is not { } log || !Same(Full(log), Full(file));
     }
 
-    /// <summary>True for a .ba2 in dist that this build doesn't make (an old archive, or one copied in by hand): the
-    /// zip and the Creations set leave it out, so a stale archive never ships.</summary>
+    /// <summary>True for a .ba2 in dist that this build doesn't make and zip.files doesn't list (an old archive, or one
+    /// the builder or someone else put there): zip and pack refuse it, so a build never passes while silently
+    /// leaving out an archive the modder may have meant to ship.</summary>
     public static bool StrayArchive(SfModProject project, string file) =>
+        UnmadeArchive(project, file) && !ListedInZipFiles(project, file);
+
+    /// <summary>True for a .ba2 whose name isn't one of the archives this build makes (names match without case).</summary>
+    public static bool UnmadeArchive(SfModProject project, string file) =>
         file.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase)
         && !project.ArchiveNames.Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True when the file is the source of a zip.files entry: the modder asked for it to ship.</summary>
+    public static bool ListedInZipFiles(SfModProject project, string file) =>
+        project.ZipFiles.Any(z => Same(Full(z.Source), Full(file)));
+
+    /// <summary>Why a stray archive stops the zip or the Creations set, with the fix: delete it, or list it in zip.files.</summary>
+    public static string StrayArchiveError(SfModProject project, string file, string what)
+    {
+        var name = Path.GetFileName(file);
+        var relative = Path.GetRelativePath(project.Folder, file).Replace('\\', '/');
+        var made = project.ArchiveNames.Any() ? string.Join(" and ", project.ArchiveNames.Select(n => $"\"{n}\"")) : "none";
+        return $"{file} is an archive in dist that this build doesn't make (the mod's archives are {made}), and {what} would leave it out without a word. "
+            + $"Fix: delete it from dist (sf-mod-build pack deletes the mod's own old archives), or, if it is meant to ship, list it in zip.files of {project.File}, "
+            + $"for example \"zip\": {{ \"files\": {{ \"{relative}\": \"{name}\" }} }}";
+    }
+
+    /// <summary>Every file in the folder with this name, matched without case (a case-sensitive disk can hold
+    /// "mymod - main.ba2" beside "MyMod - Main.ba2"; the game treats them as one). Empty when the folder isn't there.</summary>
+    public static List<string> FilesNamed(string folder, string name) =>
+        Directory.Exists(folder)
+            ? Directory.GetFiles(folder).Where(f => Same(Path.GetFileName(f), name)).Order(StringComparer.Ordinal).ToList()
+            : new List<string>();
 
     /// <summary>Deletes the folder (when there) and makes it again, empty. Null when done, else why it failed.</summary>
     public static string? Empty(string folder)

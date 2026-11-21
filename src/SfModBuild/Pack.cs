@@ -7,8 +7,10 @@
 // With "xbox": true it also makes the Creations upload set: creations-out is emptied, dist's files are copied into it,
 // and "<plugin> - Main_xbox.ba2" and "<plugin> - Textures_xbox.ba2" are packed there with -compression=XBox. The Xbox
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
-// given (Xbox-format exports, which must cover every PC texture), else the PC textures. A .ba2 in dist that this build
-// doesn't make is never copied into creations-out (and pack deletes the mod's own old archives from dist).
+// given (Xbox-format exports, which must cover every PC texture), else the PC textures. Pack deletes the mod's own old
+// archives from dist (names match without case), and with "xbox" on it refuses any other .ba2 in dist that zip.files
+// doesn't list, so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
+// the mod's own old archives from creations-out too.
 // A scripts-only mod is packed straight from <stage>/Scripts, as before loose files were supported. With loose files,
 // each archive's files are first copied into <stage>/pack/<archive>, so every archive has one root.
 // Exit 0 when every archive was made (or there is nothing to pack), 1 when Archive2 failed, 2 bad input or setup.
@@ -34,6 +36,7 @@ internal static class Pack
         {
             // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip
             if (DeleteStale(project, stdout) is { } code) return code;
+            if (DeleteStaleCreations(project, stdout) is { } xboxCode) return xboxCode;
             stdout.WriteLine($"RESULT: OK, nothing to pack (the project has no scripts{(project.Assets != null ? " and its assets folder has no files" : " and no assets")})");
             return ExitCodes.Ok;
         }
@@ -124,6 +127,18 @@ internal static class Pack
             return ExitCodes.BadInput;
         }
         if (DeleteStale(project, stdout) is { } staleCode) return staleCode;
+        if (project.Xbox)
+        {
+            // checked before any archive is made: the Creations set takes dist's files, so an archive there that this
+            // build doesn't make would otherwise be left out of it, or shipped stale
+            var stray = Directory.GetFiles(project.Dist).Order(StringComparer.Ordinal)
+                .FirstOrDefault(f => Common.Shippable(f) && Common.StrayArchive(project, f));
+            if (stray != null)
+            {
+                stdout.WriteLine($"RESULT: CANNOT PACK ({Common.StrayArchiveError(project, stray, "the Creations set in " + project.CreationsOut)}).");
+                return ExitCodes.BadInput;
+            }
+        }
 
         // Where each archive's files come from
         string? mainSource = null, mainRoot = null, texSource = null, xboxTexSource = null;
@@ -177,15 +192,11 @@ internal static class Pack
         try
         {
             // dist's own files (the plugin, the PC archives, anything else the builder wrote): the same ones the zip
-            // takes, so never zips, Papyrus source, half-written zips or the log
+            // takes, so never zips, Papyrus source, half-written zips or the log (archives this build doesn't make
+            // were refused above unless zip.files lists them)
             foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.OrdinalIgnoreCase))
             {
                 if (!Common.Shippable(f)) continue;
-                if (Common.StrayArchive(project, f))
-                {
-                    stdout.WriteLine($"WARNING: {f} is left out of {project.CreationsOut}: this build doesn't make an archive by that name. Fix: delete it from dist.");
-                    continue;
-                }
                 File.Copy(f, Path.Combine(project.CreationsOut, Path.GetFileName(f)));
                 Log.Write($"copied {f} into {project.CreationsOut}");
             }
@@ -299,7 +310,7 @@ internal static class Pack
 
     /// <summary>Two loose files whose paths differ only in case (possible on Linux and in case-sensitive folders).</summary>
     static string CaseTwin(string field, string file, string other) =>
-        $"{file} and {other} in {field} differ only in case, so they would be one file in the archive (the game and Windows don't tell them apart). Fix: keep one of them and delete or rename the other";
+        $"{SfModProject.CaseTwinProblem(field, file, other)} Fix: {SfModProject.CaseTwinFix.TrimEnd('.')}";
 
     static void Copy(string from, string to)
     {
@@ -308,16 +319,51 @@ internal static class Pack
         Log.Write($"staged {from} -> {to}");
     }
 
-    /// <summary>Deletes from dist each archive this build doesn't make any more (the mod's textures or scripts were
-    /// removed), so it can't reach the zip. Null when done, else the exit code to return.</summary>
+    /// <summary>Deletes from dist each of the mod's archives this build doesn't make any more (the mod's textures or
+    /// scripts were removed), and any copy of an archive it does make spelled in other letter case (a case-sensitive
+    /// disk can hold both), so neither can reach the zip. Null when done, else the exit code to return.</summary>
     static int? DeleteStale(SfModProject project, TextWriter stdout)
     {
-        foreach (var stale in new[] { project.Ba2Name, project.TexturesBa2Name }.Except(project.ArchiveNames))
+        var made = project.ArchiveNames.ToList();
+        foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name })
+            foreach (var path in Common.FilesNamed(project.Dist, name))
+            {
+                // the archive this build makes is replaced by Archive2 at its exact name
+                if (made.Contains(name) && Path.GetFileName(path) == name) continue;
+                if (DeleteOld(path, stdout) is { } code) return code;
+                stdout.WriteLine($"deleted  {path} (from an earlier build; this build doesn't make it{(made.Contains(name) ? " by that spelling" : "")})");
+            }
+        return null;
+    }
+
+    /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
+    /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
+    /// folder is otherwise left as it is. Null when done, else the exit code to return.</summary>
+    static int? DeleteStaleCreations(SfModProject project, TextWriter stdout)
+    {
+        if (!project.Xbox || !Directory.Exists(project.CreationsOut)) return null;
+        var files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
+            .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
+        if (files.Count == 0) return null;
+        string? why;
+        try
         {
-            var path = Path.Combine(project.Dist, stale);
-            if (!File.Exists(path)) continue;
+            why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project))
+                  ?? (new DirectoryInfo(project.CreationsOut).LinkTarget is { } to ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}" : null);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            why = $"the creations-out folder {project.CreationsOut} can't be checked ({e.Message})";
+        }
+        if (why != null)
+        {
+            stdout.WriteLine($"RESULT: CANNOT PACK ({why}). Fix: in {project.File}, set \"creationsOut\" to a folder of its own, for example \"creations-out\".");
+            return ExitCodes.BadInput;
+        }
+        foreach (var path in files)
+        {
             if (DeleteOld(path, stdout) is { } code) return code;
-            stdout.WriteLine($"deleted  {path} (from an earlier build; this build doesn't make it)");
+            stdout.WriteLine($"deleted  {path} (from an earlier build; this build makes no Creations archives)");
         }
         return null;
     }

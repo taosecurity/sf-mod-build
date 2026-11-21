@@ -61,6 +61,32 @@ internal sealed class TempDir : IDisposable
         return full;
     }
 
+    /// <summary>Makes a new, empty folder that tells "a" and "A" apart (on Windows with fsutil's per-folder flag,
+    /// which folders made inside it inherit; elsewhere when the disk already does). Null when this machine can't,
+    /// so the test returns early.</summary>
+    public string? CaseSensitiveDir(string relative)
+    {
+        var full = Dir(relative);
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("fsutil.exe", $"file setCaseSensitiveInfo \"{full}\" enable")
+                    { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true });
+                if (p == null) return null;
+                p.StandardOutput.ReadToEnd();
+                p.WaitForExit();
+                if (p.ExitCode != 0) return null;
+            }
+            catch (System.ComponentModel.Win32Exception) { return null; }
+        }
+        var probe = System.IO.Path.Combine(full, "probe");
+        System.IO.File.WriteAllText(probe, "a");
+        var twin = System.IO.File.Exists(System.IO.Path.Combine(full, "PROBE"));
+        System.IO.File.Delete(probe);
+        return twin ? null : full;
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(Path, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }

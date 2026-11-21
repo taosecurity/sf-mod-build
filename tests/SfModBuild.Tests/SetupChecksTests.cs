@@ -220,6 +220,14 @@ public class SetupChecksTests
     }
 
     [Fact]
+    public void WithoutCommentTreatsAnUnclosedQuoteAsNoQuote()
+    {
+        Assert.Equal("\"Data/Scripts/Source", SetupChecks.WithoutComment("\"Data/Scripts/Source ; the CK's folder"));
+        Assert.Equal("\"a", SetupChecks.WithoutComment("\"a#b;c"));
+        Assert.Equal("\"open", SetupChecks.WithoutComment("\"open"));
+    }
+
+    [Fact]
     public void LooseFilesNeedOnlyTheArchiveLineBethesdaAsksFor()
     {
         // Bethesda's setup and INI pages ask for bInvalidateOlderFiles=1 alone and warn against sResourceDataDirsFinal

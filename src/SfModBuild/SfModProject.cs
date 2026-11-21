@@ -118,6 +118,11 @@ internal sealed class SfModProject
             path.EndsWith(".wem", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".ffxanim", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Two loose files whose paths differ only in case: the words validate and pack both use.</summary>
+    public static string CaseTwinProblem(string field, string file, string other) =>
+        $"{file} and {other} in {field} differ only in case, so they would be one file in the archive (the game and Windows don't tell them apart).";
+    public const string CaseTwinFix = "keep one of them and delete or rename the other.";
+
     public const string FileName = "sfmod.json";
 
     static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "dist", "stage", "xbox", "creationsOut", "assets", "zip", "check" };
@@ -349,7 +354,8 @@ internal sealed class SfModProject
                 // With xbox on, the given folder is the whole Xbox texture archive: an empty one would be packed as
                 // an empty archive, and a texture it lacks is simply missing on Xbox (the console never reads the PC
                 // archive). Filling the gaps from the PC set would mix formats without a word, so both are refused.
-                if (xbox && xboxFiles.Count == 0)
+                // A mod with no PC textures makes no texture archive, so an empty folder is harmless (pack agrees).
+                if (xbox && xboxFiles.Count == 0 && textures.Count > 0)
                     Error("assets.xboxTextures", $"{xboxFolder} holds no .dds textures, so the Xbox texture archive would be empty.", "put the Xbox-format .dds files there (laid out like the PC textures), or remove assets.xboxTextures to pack the PC textures for Xbox too.");
                 else if (missing.Count > 0)
                 {
@@ -360,9 +366,24 @@ internal sealed class SfModProject
                 if (extra.Count > 0)
                     Warn("assets.xboxTextures", $"{extra.Count} Xbox texture(s) have no PC copy in assets.source: {Few(extra)}.", "check the paths match the PC textures, folder for folder.");
             }
+            CaseTwins(general, "assets.source");
+            CaseTwins(textures, "assets.source");
+            CaseTwins(xboxFiles, "assets.xboxTextures");
             ok = problems.Count(x => !x.IsWarning) == before;
             if (source == null) return null;
             return new SfModProject.AssetsSection { Source = source, XboxTextures = xboxFolder, General = general, Textures = textures, XboxTextureFiles = xboxFiles };
+        }
+
+        /// <summary>A PROBLEM for each pair of files whose archive paths differ only in case (a case-sensitive folder,
+        /// as on Linux, can hold both): they would be one file in the archive. Pack refuses them with the same words.</summary>
+        void CaseTwins(List<SfModProject.AssetFile> files, string field)
+        {
+            var taken = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in files)
+            {
+                if (taken.TryGetValue(f.Relative, out var other)) Error(field, CaseTwinProblem(field, f.Full, other), CaseTwinFix);
+                else taken[f.Relative] = f.Full;
+            }
         }
 
         static string Few(List<string> names) => string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" and {names.Count - 3} more" : "");

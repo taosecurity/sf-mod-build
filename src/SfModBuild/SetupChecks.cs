@@ -25,7 +25,8 @@ internal static class SetupChecks
     static bool IsOne(string v) => v.Split(new[] { ' ', '\t', ';', '#' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() == "1";
     static bool IsZero(string v) => v.Split(new[] { ' ', '\t', ';', '#' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() == "0";
 
-    /// <summary>The value without a trailing ; or # comment (one inside double quotes is part of the value).</summary>
+    /// <summary>The value without a trailing ; or # comment (one inside double quotes is part of the value). When a
+    /// quote is never closed, nothing counts as quoted: the value ends at the first ; or #.</summary>
     public static string WithoutComment(string v)
     {
         var quoted = false;
@@ -34,6 +35,7 @@ internal static class SetupChecks
             if (v[i] == '"') quoted = !quoted;
             else if (!quoted && v[i] is ';' or '#') return v[..i].TrimEnd();
         }
+        if (quoted && v.IndexOfAny(new[] { ';', '#' }) is var first and >= 0) return v[..first].TrimEnd();
         return v.Trim();
     }
 

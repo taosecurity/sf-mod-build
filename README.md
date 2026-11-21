@@ -216,7 +216,7 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Runs the builder (`dotnet run -c Release --project <builder> -- <args>`) to write the plugin into dist (dist is emptied first). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`, and never a `.ba2` the build doesn't make (it is left out with a WARNING naming it). |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make stops it (exit 2, naming the file), unless `zip.files` lists it. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
@@ -305,9 +305,9 @@ modders do today.
 
 If you export Xbox versions of your textures (the Creation Kit's AssetWatcher does this), put them
 in a second folder laid out the same way and name it with `"xboxTextures": "Assets-xbox"`. That folder must then
-hold an Xbox copy of every PC texture: `validate` and `pack` refuse a folder with no `.dds` in it, and a folder
-that lacks a PC texture, because the console never reads the PC archive and that texture would be missing on Xbox.
-An Xbox texture with no PC copy is only a warning.
+hold an Xbox copy of every PC texture: `validate` and `pack` refuse a folder with no `.dds` in it (when the mod has
+PC textures), and a folder that lacks a PC texture, because the console never reads the PC archive and that texture
+would be missing on Xbox. An Xbox texture with no PC copy is only a warning.
 
 A PC `.wem` plays silent on Xbox and PlayStation 5, so `validate` warns about sounds when `xbox` is on.
 
@@ -327,9 +327,15 @@ A PC `.wem` plays silent on Xbox and PlayStation 5, so `validate` warns about so
 
 `pack` copies each archive's files into `<stage>\pack\` first, so each archive has one root folder. A mod with
 scripts and no loose files is packed exactly as before. Two loose files whose paths differ only in case (possible on
-Linux) are refused, because the game and Windows treat them as one file. When the mod no longer has textures or
-scripts, `pack` deletes the old archive from dist, and `zip` and the Creations set leave out any `.ba2` in dist that
-the build doesn't make, with a WARNING naming it.
+Linux) are a PROBLEM in `validate` and are refused by `pack`, because the game and Windows treat them as one file.
+When the mod no longer has textures or scripts, `pack` deletes the old archive from dist (names match without
+case), and with `"xbox": true` and nothing left to pack it also deletes the mod's own old archives from
+creations-out.
+
+Any other `.ba2` in dist that the build doesn't make stops `zip` (and `pack` with `"xbox": true`)
+with a RESULT line naming it, so a build never passes while silently leaving out an archive. Delete it, or, if your
+builder writes it on purpose, list it in `zip.files`, for example `"files": { "dist/Extra.ba2": "Extra.ba2" }`
+(the file must be there when the project is read).
 
 ## Setup checks in doctor
 
@@ -415,7 +421,7 @@ tool stops on an unexpected error, it says so in one `RESULT: CANNOT RUN` line a
 |---|---|
 | 0 | OK (a missing checker is only a WARNING, unless you require the check) |
 | 1 | the build or the check failed (a script didn't compile, the builder failed, the checker found problems) |
-| 2 | bad input or setup (a wrong option, a broken sfmod.json, a missing tool, `-release` asked for) |
+| 2 | bad input or setup (a wrong option, a broken sfmod.json, a missing tool, `-release` asked for, an archive in dist that the build doesn't make) |
 
 ## Found a mistake?
 
