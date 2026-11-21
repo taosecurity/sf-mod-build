@@ -19,6 +19,10 @@
 //     "stage": ".build/stage",                     compiled scripts go here (default .build/stage)
 //     "xbox": false,                               also make "<plugin> - Main_xbox.ba2" in creations-out (default false)
 //     "creationsOut": "creations-out",             where the Creations upload set goes (default creations-out)
+//     "assets": {                                  loose files to pack (leave out when the mod has none)
+//       "source": "Assets",                        a folder laid out like Data: Meshes\, Materials\, Textures\, ...
+//       "xboxTextures": "Assets-xbox"              optional: Xbox-format .dds files for the _xbox texture archive
+//     },
 //     "zip": {
 //       "name": "{name}-{version}.zip",            the zip's name (default {name}-{version}.zip)
 //       "folder": ".",                             where the zip is written (default: the sfmod.json folder)
@@ -57,7 +61,17 @@ internal sealed class SfModProject
     public string PluginBase => Path.GetFileNameWithoutExtension(Plugin);
     public string Ba2Name => $"{PluginBase} - Main.ba2";
     public string XboxBa2Name => $"{PluginBase} - Main_xbox.ba2";
+    public string TexturesBa2Name => $"{PluginBase} - Textures.ba2";
+    public string XboxTexturesBa2Name => $"{PluginBase} - Textures_xbox.ba2";
     public ScriptsSection? Scripts { get; init; }
+    public AssetsSection? Assets { get; init; }
+    /// <summary>True when the build makes "&lt;plugin&gt; - Main.ba2": the mod has scripts or general loose files.</summary>
+    public bool HasMainArchive => Scripts != null || Assets is { General.Count: > 0 };
+    /// <summary>True when the build makes "&lt;plugin&gt; - Textures.ba2": the mod has loose .dds files.</summary>
+    public bool HasTexturesArchive => Assets is { Textures.Count: > 0 };
+    /// <summary>The archives the build puts in dist, in the order pack makes them.</summary>
+    public IEnumerable<string> ArchiveNames =>
+        (HasMainArchive ? new[] { Ba2Name } : Array.Empty<string>()).Concat(HasTexturesArchive ? new[] { TexturesBa2Name } : Array.Empty<string>());
     public required string BuilderProject { get; init; }
     public required IReadOnlyList<string> BuilderArgs { get; init; }
     public required string Dist { get; init; }
@@ -81,9 +95,39 @@ internal sealed class SfModProject
         public required IReadOnlyList<string> Files { get; init; }
     }
 
+    /// <summary>One loose file: its full path here and its path inside the archive (relative to the assets folder,
+    /// with the system's separator), such as Meshes\MyMod\Box.nif.</summary>
+    public sealed record AssetFile(string Full, string Relative);
+
+    /// <summary>The mod's loose files, read from the assets folder when the project is loaded.</summary>
+    public sealed class AssetsSection
+    {
+        public required string Source { get; init; }
+        /// <summary>The folder of Xbox-format textures, or null to pack the PC textures into the _xbox archive too.</summary>
+        public string? XboxTextures { get; init; }
+        /// <summary>Everything that isn't a .dds, for "&lt;plugin&gt; - Main.ba2", sorted by path.</summary>
+        public required IReadOnlyList<AssetFile> General { get; init; }
+        /// <summary>The .dds files, for "&lt;plugin&gt; - Textures.ba2", sorted by path.</summary>
+        public required IReadOnlyList<AssetFile> Textures { get; init; }
+        /// <summary>The .dds files from XboxTextures (empty when it isn't given).</summary>
+        public required IReadOnlyList<AssetFile> XboxTextureFiles { get; init; }
+        /// <summary>True when Main holds a .wem or .ffxanim: those play silent when stored compressed, so Main is
+        /// packed with -compression=None.</summary>
+        public bool UncompressedMain => General.Any(f => Uncompressed(f.Relative));
+        public static bool Uncompressed(string path) =>
+            path.EndsWith(".wem", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".ffxanim", StringComparison.OrdinalIgnoreCase);
+    }
+
     public const string FileName = "sfmod.json";
 
-    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "dist", "stage", "xbox", "creationsOut", "zip", "check" };
+    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "dist", "stage", "xbox", "creationsOut", "assets", "zip", "check" };
+    static readonly string[] AssetsFields = { "source", "xboxTextures" };
+    // Never packed into an archive: plugins and archives belong at the top of the zip, Papyrus source never ships.
+    static readonly string[] RefusedAssetExtensions = { ".psc", ".esm", ".esp", ".esl", ".ba2", ".zip", ".7z", ".rar" };
+    // Artists' source formats the game doesn't read; packed anyway, with a warning, in case the modder means it.
+    static readonly string[] SourceArtExtensions = { ".tif", ".tiff", ".fbx", ".wav", ".psd", ".blend", ".png", ".tga", ".jpg", ".jpeg", ".xcf", ".spp" };
+    // Left out without a word: system clutter and dot files such as .gitkeep.
+    static readonly string[] SkippedAssetNames = { "Thumbs.db", "desktop.ini" };
     static readonly string[] ScriptsFields = { "source", "namespaces", "files" };
     static readonly string[] BuilderFields = { "project", "args" };
     static readonly string[] ZipFields = { "name", "folder", "files" };
@@ -200,23 +244,200 @@ internal sealed class SfModProject
                 if (path != null && !SamePath(path, folder) && !IsUnder(path, folder))
                     Error(field, $"{path} isn't inside the mod's folder {folder}, and every build empties it.",
                         $"give a folder inside the mod's folder, relative to sfmod.json, for example \"{(field == "stage" ? ".build/stage" : field == "dist" ? "dist" : "creations-out")}\".");
+            var assetsOk = true;
+            AssetsSection? assets = null;
+            if (dist != null && stage != null && creationsOut != null)
+            {
+                var keep = new List<(string, string)> { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) };
+                var hold = new List<(string, string)>();
+                if (builderProject != null) hold.Add(("the builder", Path.GetDirectoryName(builderProject)!));
+                if (scripts != null) hold.AddRange(scripts.Sources.Select(s => ("a script source folder", s)));
+                assets = Assets(root, xbox, keep, hold, out assetsOk);
+            }
             var (zipName, zipFolder, zipFiles) = Zip(root, name, plugin, version);
             var (checker, checkRequired, checkArgs) = Check(root);
 
             if (plugin == null || name == null || version == null || builderProject == null || builderArgs == null || dist == null
-                || stage == null || creationsOut == null || zipName == null || zipFolder == null || zipFiles == null || checkArgs == null)
+                || stage == null || creationsOut == null || !assetsOk || zipName == null || zipFolder == null || zipFiles == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
-                File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts,
+                File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts, Assets = assets,
                 BuilderProject = builderProject, BuilderArgs = builderArgs, Dist = dist, Stage = stage, Xbox = xbox,
                 CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
+            var buildsItself = new[] { p.Plugin, p.Ba2Name, p.TexturesBa2Name };
             foreach (var (_, inZip) in zipFiles)
-                if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase) || string.Equals(inZip, p.Ba2Name, StringComparison.OrdinalIgnoreCase))
-                    Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its BA2 come from dist).", "leave the plugin and the BA2 out of zip.files.");
+                if (buildsItself.Contains(inZip, StringComparer.OrdinalIgnoreCase))
+                    Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its archives come from dist).", "leave the plugin and the archives out of zip.files.");
             return p;
+        }
+
+        /// <summary>The assets section: the folder of loose files and, optionally, Xbox-format textures. Every file is
+        /// read now, so validate can list problems before a build. ok is false when the section has a PROBLEM.</summary>
+        SfModProject.AssetsSection? Assets(JsonElement root, bool xbox, List<(string Name, string Path)> outputs, List<(string What, string Path)> mustNotHold, out bool ok)
+        {
+            ok = true;
+            if (!root.TryGetProperty("assets", out var a) || a.ValueKind == JsonValueKind.Null) return null;
+            var before = problems.Count(x => !x.IsWarning);
+            if (a.ValueKind != JsonValueKind.Object)
+            {
+                Error("assets", $"it is a {Kind(a)}, not an object.", "write it like \"assets\": { \"source\": \"Assets\" }, or leave it out when the mod has no loose files.");
+                ok = false;
+                return null;
+            }
+            Fields(a, "assets.", AssetsFields);
+            var source = AssetFolder(a, "source", required: true, outputs, mustNotHold);
+            var xboxFolder = AssetFolder(a, "xboxTextures", required: false, outputs, mustNotHold);
+            if (source != null && xboxFolder != null && (SamePath(source, xboxFolder) || IsUnder(xboxFolder, source) || IsUnder(source, xboxFolder)))
+            {
+                Error("assets.xboxTextures", $"{xboxFolder} is, holds or is inside assets.source {source}, so the same files would be packed twice.", "keep the Xbox textures in a folder of their own, beside the assets folder, for example \"Assets-xbox\".");
+                xboxFolder = null;
+            }
+            if (xboxFolder != null && !xbox)
+                Warn("assets.xboxTextures", "it is given, but \"xbox\" is off, so no Xbox archive is made and these files aren't used.", "set \"xbox\": true to make the Creations set, or remove assets.xboxTextures.");
+
+            var general = new List<SfModProject.AssetFile>();
+            var textures = new List<SfModProject.AssetFile>();
+            if (source != null)
+            {
+                foreach (var f in ScanAssets(source, "assets.source"))
+                {
+                    var ext = Path.GetExtension(f.Relative);
+                    var field = $"assets.source ({f.Relative})";
+                    if (RefusedAssetExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Error(field, ext.Equals(".psc", StringComparison.OrdinalIgnoreCase)
+                                ? "Papyrus source (.psc) never ships; the compiled scripts come from the scripts section."
+                                : $"a {ext} file doesn't go inside an archive (plugins and archives go at the top of the zip).",
+                            ext.Equals(".psc", StringComparison.OrdinalIgnoreCase)
+                                ? "move it to the script source folder (scripts.source), or delete it from the assets folder."
+                                : "move it out of the assets folder; a plugin comes from the builder, and any other file can go in zip.files.");
+                        continue;
+                    }
+                    if (!f.Relative.Contains(Path.DirectorySeparatorChar))
+                    {
+                        Error(field, "it is at the top of the assets folder, where the game never looks inside an archive.",
+                            "put it in the Data folder it belongs to (Meshes\\, Materials\\, Textures\\, Sound\\ and so on, inside the assets folder), or move it out.");
+                        continue;
+                    }
+                    if (SourceArtExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+                        Warn(field, $"{ext} is an artist's source format that the game doesn't read; it will be packed anyway.",
+                            "convert it first (textures to .dds, models to .nif and .mesh, sound to .wem with the Creation Kit's tools), and keep the source outside the assets folder.");
+                    (ext.Equals(".dds", StringComparison.OrdinalIgnoreCase) ? textures : general).Add(f);
+                }
+                if (general.Count + textures.Count == 0 && problems.Count(x => !x.IsWarning) == before)
+                    Warn("assets.source", $"{source} holds no files to pack.", "put the mod's loose files there (laid out like Data: Meshes\\, Textures\\ ...), or remove the assets section.");
+                if (xbox && general.Any(f => f.Relative.EndsWith(".wem", StringComparison.OrdinalIgnoreCase)))
+                    Warn("assets.source", "it holds .wem sound files and \"xbox\" is on. A PC .wem copied into the Xbox archive plays silent on Xbox and PlayStation 5.",
+                        "make console versions of the sounds in the Creation Kit from WAV sources, or use the game's own sounds for the Creation.");
+            }
+            var xboxFiles = new List<SfModProject.AssetFile>();
+            if (xboxFolder != null)
+            {
+                foreach (var f in ScanAssets(xboxFolder, "assets.xboxTextures"))
+                {
+                    if (!Path.GetExtension(f.Relative).Equals(".dds", StringComparison.OrdinalIgnoreCase))
+                        Error($"assets.xboxTextures ({f.Relative})", "only .dds textures go in the Xbox texture folder.", "keep other files in assets.source; they go into the Main archives for both platforms.");
+                    else xboxFiles.Add(f);
+                }
+                var pc = new HashSet<string>(textures.Select(t => t.Relative), StringComparer.OrdinalIgnoreCase);
+                var xb = new HashSet<string>(xboxFiles.Select(t => t.Relative), StringComparer.OrdinalIgnoreCase);
+                var missing = pc.Where(x => !xb.Contains(x)).Order(StringComparer.OrdinalIgnoreCase).ToList();
+                var extra = xb.Where(x => !pc.Contains(x)).Order(StringComparer.OrdinalIgnoreCase).ToList();
+                if (missing.Count > 0)
+                    Warn("assets.xboxTextures", $"{missing.Count} PC texture(s) have no Xbox copy, so they would be missing on Xbox: {Few(missing)}.", "export an Xbox version of each, or remove assets.xboxTextures to pack the PC textures for Xbox too.");
+                if (extra.Count > 0)
+                    Warn("assets.xboxTextures", $"{extra.Count} Xbox texture(s) have no PC copy in assets.source: {Few(extra)}.", "check the paths match the PC textures, folder for folder.");
+            }
+            ok = problems.Count(x => !x.IsWarning) == before;
+            if (source == null) return null;
+            return new SfModProject.AssetsSection { Source = source, XboxTextures = xboxFolder, General = general, Textures = textures, XboxTextureFiles = xboxFiles };
+        }
+
+        static string Few(List<string> names) => string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" and {names.Count - 3} more" : "");
+
+        /// <summary>An assets folder: it must exist and be a folder of its own, apart from every folder the tool
+        /// empties (their files would be lost or packed twice) and from the builder and the script sources.</summary>
+        string? AssetFolder(JsonElement a, string name, bool required, List<(string Name, string Path)> outputs, List<(string What, string Path)> mustNotHold)
+        {
+            var field = "assets." + name;
+            if (!a.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null)
+            {
+                if (required) Error(field, "it is missing.", $"add \"{name}\": \"Assets\" (the folder that holds the mod's loose files, laid out like Data).");
+                return null;
+            }
+            var full = Folder(a, name, "Assets", field);
+            if (full == null) return null;
+            if (!Directory.Exists(full))
+            {
+                Error(field, $"the folder {full} isn't there.", "give the folder that holds the loose files (Meshes\\, Textures\\ ... inside it), relative to sfmod.json.");
+                return null;
+            }
+            if (SamePath(full, folder) || IsUnder(folder, full))
+            {
+                Error(field, $"{full} is or holds the mod's own folder, so the project file, the builder and the build output would be packed.", "give a folder of its own inside the mod, for example \"Assets\".");
+                return null;
+            }
+            foreach (var (outName, outPath) in outputs)
+                if (SamePath(full, outPath) || IsUnder(full, outPath) || IsUnder(outPath, full))
+                {
+                    Error(field, $"{full} is, holds or is inside {outName} ({outPath}), which the build empties.", "keep the loose files in a folder of their own, for example \"Assets\".");
+                    return null;
+                }
+            foreach (var (what, path) in mustNotHold)
+                if (SamePath(full, path) || IsUnder(path, full))
+                {
+                    Error(field, $"{full} is or holds {what} ({path}), whose files would be packed.", "give a folder that holds only the loose files, for example \"Assets\".");
+                    return null;
+                }
+            return full;
+        }
+
+        /// <summary>Every file under the folder, sorted by path. Links and junctions are left out (with a warning),
+        /// so a folder can't pull in files from elsewhere; so are dot files and Windows clutter.</summary>
+        List<SfModProject.AssetFile> ScanAssets(string root, string field)
+        {
+            var list = new List<SfModProject.AssetFile>();
+            var pending = new Stack<DirectoryInfo>();
+            pending.Push(new DirectoryInfo(root));
+            while (pending.Count > 0)
+            {
+                var dir = pending.Pop();
+                FileSystemInfo[] entries;
+                try { entries = dir.GetFileSystemInfos(); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    Error(field, $"{dir.FullName} can't be read ({e.Message}).", "check that this account can read the folder.");
+                    continue;
+                }
+                foreach (var e in entries)
+                {
+                    if (e.Name.StartsWith('.') || SkippedAssetNames.Contains(e.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Log.Write($"assets: left out {e.FullName}");
+                        continue;
+                    }
+                    string? link;
+                    try { link = e.LinkTarget; }
+                    catch (Exception x) when (x is IOException or UnauthorizedAccessException)
+                    {
+                        Error(field, $"{e.FullName} can't be checked ({x.Message}).", "check that this account can read it, or move it out of the assets folder.");
+                        continue;
+                    }
+                    if (link != null)
+                    {
+                        Warn(field, $"{e.FullName} is a link or junction (to {link}), so it is left out.", "copy the files themselves into the assets folder.");
+                        continue;
+                    }
+                    if (e is DirectoryInfo d) pending.Push(d);
+                    else list.Add(new SfModProject.AssetFile(e.FullName, Path.GetRelativePath(root, e.FullName)));
+                }
+            }
+            list.Sort((x, y) => string.Compare(x.Relative, y.Relative, StringComparison.OrdinalIgnoreCase));
+            Log.Write($"assets: {list.Count} file(s) in {root}");
+            return list;
         }
 
         string? CheckPlugin(string plugin)

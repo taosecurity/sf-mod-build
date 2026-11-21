@@ -13,6 +13,8 @@ internal interface IHostEnv
     /// <summary>The roots of the fixed drives, such as C:\ and D:\.</summary>
     IEnumerable<string> DriveRoots();
     string? EnvVar(string name);
+    /// <summary>The account's Documents folder (where My Games is), or null when there is none.</summary>
+    string? DocumentsFolder();
     /// <summary>Runs a program and returns its standard output, or null (with the reason) when it can't be run or
     /// doesn't finish in time.</summary>
     string? Run(string exe, string arguments, out string? why);
@@ -57,6 +59,9 @@ internal sealed class RealHostEnv : IHostEnv
     }
 
     public string? EnvVar(string name) => Environment.GetEnvironmentVariable(name);
+
+    public string? DocumentsFolder() =>
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) is { Length: > 0 } d ? d : null;
 
     public string? Run(string exe, string arguments, out string? why)
     {

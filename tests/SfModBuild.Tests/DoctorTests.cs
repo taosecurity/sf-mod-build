@@ -127,7 +127,7 @@ public class DoctorTests
         Assert.Contains("https://github.com/taosecurity/sf-mod-check/releases", text);
         Assert.DoesNotContain("github.com/taosecurity/sfmodcheck", text);
         Assert.Contains("RESULT: MISSING 4", text);
-        Assert.Equal(5, text.Split('\n').Count(l => l.Contains("what it is for:")));   // 5 missing items
+        Assert.Equal(8, text.Split('\n').Count(l => l.Contains("what it is for:")));   // 5 missing items + 3 setup warnings
     }
 
     [Fact]
@@ -178,14 +178,14 @@ public class DoctorTests
         var game = Fake.Game(t, "G");
         var o = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "doctor", "--game", game }, env, o));          // checker missing = warning only
-        Assert.Contains("RESULT: OK, ready to build (with a WARNING", o.ToString());
+        Assert.Contains("RESULT: OK, ready to build (with 4 WARNINGS", o.ToString());   // the checker + 3 setup warnings
         Assert.Equal(2, App.Run(new[] { "doctor", "--game", t.Dir("Empty") }, env, new StringWriter()));
         Assert.Equal(2, App.Run(new[] { "doctor", "--bogus" }, env, new StringWriter()));
         Assert.Equal(2, App.Run(new[] { "frobnicate" }, env, new StringWriter()));
         Assert.Equal(2, App.Run(Array.Empty<string>(), env, new StringWriter()));
         var v = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "--version" }, env, v));
-        Assert.StartsWith("sf-mod-build 0.1.1 ", v.ToString());
+        Assert.StartsWith("sf-mod-build 0.2.0 ", v.ToString());
         var h = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "doctor", "--help" }, env, h));
         Assert.Contains("usage: sf-mod-build doctor", h.ToString());

@@ -108,6 +108,7 @@ internal static class Args
     {
         "--game" => "the game folder",
         "--checker" => "the checker program",
+        "--my-games" => "the folder that holds StarfieldCustom.ini",
         "--log" => "a log file name",
         _ => "a value",
     };
@@ -117,6 +118,7 @@ internal static class Args
     {
         "--game" => "\"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Starfield\"",
         "--checker" => "\"C:\\Tools\\sf-mod-check.exe\"",
+        "--my-games" => "\"C:\\Users\\you\\Documents\\My Games\\Starfield\"",
         "--log" => "sf-mod-build-log.txt",
         _ => "<value>",
     };

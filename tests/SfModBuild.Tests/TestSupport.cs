@@ -17,6 +17,9 @@ internal sealed class FakeHostEnv : IHostEnv
     public string? RegistryString(string key, string valueName) => Registry.TryGetValue((key, valueName), out var v) ? v : null;
     public IEnumerable<string> DriveRoots() => Drives;
     public string? EnvVar(string name) => Vars.TryGetValue(name, out var v) ? v : null;
+    /// <summary>The made-up Documents folder; null (the default) means the account has none.</summary>
+    public string? Documents { get; set; }
+    public string? DocumentsFolder() => Documents;
 
     public string? Run(string exe, string arguments, out string? why)
     {

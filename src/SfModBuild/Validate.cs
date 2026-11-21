@@ -38,7 +38,20 @@ internal static class Validate
     {
         o.WriteLine($"project:  {p.File}");
         o.WriteLine($"mod:      {p.Name} {p.Version}");
-        o.WriteLine(p.Scripts != null ? $"plugin:   {p.Plugin} (archive \"{p.Ba2Name}\")" : $"plugin:   {p.Plugin} (no archive: no scripts)");
+        var archives = p.ArchiveNames.ToList();
+        o.WriteLine(archives.Count switch
+        {
+            0 => $"plugin:   {p.Plugin} (no archive: no scripts or loose files)",
+            1 => $"plugin:   {p.Plugin} (archive \"{archives[0]}\")",
+            _ => $"plugin:   {p.Plugin} (archives {string.Join(" and ", archives.Select(a => $"\"{a}\""))})",
+        });
+        if (p.Assets == null) o.WriteLine("assets:   none");
+        else
+        {
+            o.WriteLine($"assets:   from {p.Assets.Source}: {p.Assets.General.Count} general file(s), {p.Assets.Textures.Count} texture(s)"
+                + (p.Assets.UncompressedMain ? " (sound or lip files, so Main is packed uncompressed)" : ""));
+            if (p.Assets.XboxTextures != null) o.WriteLine($"          Xbox textures from {p.Assets.XboxTextures}: {p.Assets.XboxTextureFiles.Count} file(s)");
+        }
         if (p.Scripts == null) o.WriteLine("scripts:  none");
         else
         {
@@ -50,9 +63,11 @@ internal static class Validate
         o.WriteLine($"          args {string.Join(" ", p.BuilderArgs)}");
         o.WriteLine($"dist:     {p.Dist}");
         o.WriteLine($"stage:    {p.Stage}");
-        o.WriteLine($"xbox:     {(p.Xbox ? $"yes, \"{p.XboxBa2Name}\" in {p.CreationsOut}" : "no")}");
+        var xboxArchives = (p.HasMainArchive ? new[] { p.XboxBa2Name } : Array.Empty<string>())
+            .Concat(p.HasTexturesArchive ? new[] { p.XboxTexturesBa2Name } : Array.Empty<string>()).ToList();
+        o.WriteLine($"xbox:     {(!p.Xbox ? "no" : xboxArchives.Count == 0 ? $"yes, but there is nothing to pack for it; {p.CreationsOut} isn't made" : $"yes, {string.Join(" and ", xboxArchives.Select(a => $"\"{a}\""))} in {p.CreationsOut}")}");
         o.WriteLine($"zip:      {p.ZipPath}");
-        o.WriteLine($"          holds {p.Plugin}" + (p.Scripts != null ? $", {p.Ba2Name}" : "") +string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
+        o.WriteLine($"          holds {p.Plugin}" + string.Concat(archives.Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
         o.WriteLine($"check:    {p.Checker ?? "sf-mod-check or sfmodcheck from PATH"}{(p.CheckRequired ? ", required" : ", a missing checker is a WARNING")}"
             + (p.CheckArgs.Count > 0 ? $", extra options {string.Join(" ", p.CheckArgs)}" : ""));
     }

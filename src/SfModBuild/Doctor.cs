@@ -7,18 +7,22 @@ namespace SfModBuild;
 
 internal sealed record DoctorItem(string Name, bool Found, bool Required, string? Path, string For, string? HowToGet, string? Detail = null);
 
-internal sealed record DoctorReport(GameInstall? Game, List<GameInstall> OtherInstalls, List<DoctorItem> Items)
+internal sealed record DoctorReport(GameInstall? Game, List<GameInstall> OtherInstalls, List<DoctorItem> Items, List<SetupCheck> Setup)
 {
     public int MissingRequired => Items.Count(i => i.Required && !i.Found);
     public int MissingOptional => Items.Count(i => !i.Required && !i.Found);
+    public int SetupWarnings => Setup.Count(s => !s.Ok);
 }
 
 internal static class Doctor
 {
     public const string Usage =
-        "usage: sf-mod-build doctor [--game <game folder>] [--checker <sf-mod-check exe>] [--verbose] [--log <file>]";
+        "usage: sf-mod-build doctor [--game <game folder>] [--checker <sf-mod-check exe>] [--my-games <folder>] [--verbose] [--log <file>]\n" +
+        "  lists what a build needs, then checks the setup chapter's settings: the Papyrus log lines in StarfieldCustom.ini,\n" +
+        "  CreationKitCustom.ini and the unpacked script sources (warnings only; --my-games is the folder holding\n" +
+        "  StarfieldCustom.ini, default Documents\\My Games\\Starfield)";
 
-    public static readonly ArgSpec Spec = new(new[] { "--game", "--checker" }, Array.Empty<string>());
+    public static readonly ArgSpec Spec = new(new[] { "--game", "--checker", "--my-games" }, Array.Empty<string>());
 
     public const string CkHowTo =
         "Install the Starfield Creation Kit from Steam (Library, then Tools, then \"Starfield Creation Kit\"). " +
@@ -26,7 +30,7 @@ internal static class Doctor
 
     public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
-        var report = Examine(p.Get("--game"), p.Get("--checker"), env, out var error);
+        var report = Examine(p.Get("--game"), p.Get("--checker"), env, out var error, p.Get("--my-games"));
         if (report == null)
         {
             Console.Error.WriteLine(error);
@@ -39,9 +43,24 @@ internal static class Doctor
 
     /// <summary>Looks for the game and the tools. Null (with an error naming the option and the fix) only when an
     /// option given is unusable; a game that isn't found is a missing item in the report.</summary>
-    public static DoctorReport? Examine(string? gameOption, string? checkerOption, IHostEnv env, out string? error)
+    public static DoctorReport? Examine(string? gameOption, string? checkerOption, IHostEnv env, out string? error, string? myGamesOption = null)
     {
         error = null;
+        if (myGamesOption != null)
+        {
+            string full;
+            try { full = System.IO.Path.GetFullPath(myGamesOption.Trim().Trim('"')); }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                error = $"--my-games \"{myGamesOption}\" is not a usable folder path ({e.Message}). Give the folder that holds StarfieldCustom.ini, for example --my-games {Args.Example("--my-games")}";
+                return null;
+            }
+            if (!Directory.Exists(full))
+            {
+                error = $"--my-games {full}: that folder doesn't exist. Give the folder that holds StarfieldCustom.ini, for example --my-games {Args.Example("--my-games")}";
+                return null;
+            }
+        }
         GameInstall? game;
         var others = new List<GameInstall>();
         if (gameOption != null)
@@ -92,7 +111,7 @@ internal static class Doctor
         items.Add(DotnetItem(env));
         items.Add(CheckerItem(env, checkerGiven));
         foreach (var i in items) Log.Write($"{(i.Found ? "found" : "missing")}: {i.Name} {i.Path ?? ""} {i.Detail ?? ""}");
-        return new DoctorReport(game, others, items);
+        return new DoctorReport(game, others, items, SetupChecks.Run(game, myGamesOption, env));
     }
 
     static DoctorItem FileItem(string name, string path, bool haveGame, string forWhat, string how) =>
@@ -157,10 +176,20 @@ internal static class Doctor
         }
         foreach (var other in r.OtherInstalls)
             o.WriteLine($"note: another Starfield install was found ({other.How}): {other.Folder}. To use it instead, give --game \"{other.Folder}\"");
+        if (r.Setup.Count > 0) o.WriteLine("setup (not needed to build; recommended for testing and the Creation Kit):");
+        foreach (var s in r.Setup)
+        {
+            o.WriteLine($"{(s.Ok ? "OK     " : "WARNING")}  {s.Name}: {(s.Path != null ? s.Path + ": " : "")}{s.Detail}");
+            if (s.Ok) continue;
+            o.WriteLine($"         what it is for: {s.For}");
+            if (s.Fix.Count > 0) o.WriteLine($"         fix: {s.Fix[0]}");
+            foreach (var line in s.Fix.Skip(1)) o.WriteLine($"             {line}");
+        }
+        var warnings = r.MissingOptional + r.SetupWarnings;
         if (r.MissingRequired > 0)
             o.WriteLine($"RESULT: MISSING {r.MissingRequired} item(s) a build needs; see the MISSING lines above for how to get them");
-        else if (r.MissingOptional > 0)
-            o.WriteLine("RESULT: OK, ready to build (with a WARNING: see above)");
+        else if (warnings > 0)
+            o.WriteLine($"RESULT: OK, ready to build (with {(warnings == 1 ? "a WARNING" : $"{warnings} WARNINGS")}: see above)");
         else
             o.WriteLine("RESULT: OK, ready to build");
     }

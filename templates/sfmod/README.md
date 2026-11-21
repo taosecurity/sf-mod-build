@@ -16,8 +16,13 @@ sf-mod-build build
 ```
 
 `build` compiles the scripts in `Scripts\Source`, runs the builder in `Builder` (which writes `dist\MyMod.esm`),
-packs the scripts into `dist\MyMod - Main.ba2`, makes `MyMod-0.1.0.zip` here and checks it with sf-mod-check (or
-sfmodcheck) when it's installed. Install the zip with Vortex or Mod Organizer 2.
+packs the scripts into `dist\MyMod - Main.ba2`, makes `MyMod-0.1.0.zip` here and checks it with sf-mod-check when
+it's installed. Install the zip with Vortex or Mod Organizer 2.
+
+To ship meshes, materials, textures or sounds of your own, put them in an `Assets` folder laid out like the game's
+`Data` folder (for example `Assets\Meshes\MyMod\Box.nif` and `Assets\Textures\MyMod\Box_color.dds`) and turn on the
+`"assets"` line in `sfmod.json`. The build then packs the textures into `dist\MyMod - Textures.ba2` and the rest
+into `dist\MyMod - Main.ba2` with the scripts.
 
 - The plugin's records are made in `Builder\Program.cs`. Each record keeps its FormID from build to build through
   `ids.lock.json`; commit that file and `Builder\packages.lock.json`.

@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+### What's new
+
+sf-mod-build now packs a mod's own art. Put your meshes, materials, textures and sounds in one folder laid out like the game's Data folder, name it in `sfmod.json` with `"assets": { "source": "Assets" }`, and `build` packs the textures into `<plugin> - Textures.ba2` and everything else into `<plugin> - Main.ba2` with your scripts. For Creations it makes separate `_xbox` archives of both, and it can take Xbox-format textures from a folder of their own.
+
+`doctor` now also checks your setup: the Papyrus logging lines in StarfieldCustom.ini, the Creation Kit's CreationKitCustom.ini and the unpacked script sources. Each is only a warning, with the exact lines to add.
+
+The starter template moves to BuildKit 0.4.2. Its plugin is byte for byte the same as with BuildKit 0.4.0.
+
+### Example
+
+A starter mod with a mesh, a material and a texture added in its `Assets` folder (folder names shortened):
+
+    > sf-mod-build build --checker C:\Tools\sf-mod-check.exe
+    ...
+    == pack
+    staged   2 general and 1 texture file(s) from C:\Mods\AssetTest\Assets
+    packed   C:\Mods\AssetTest\dist\AssetTest - Main.ba2 (871 bytes)
+    packed   C:\Mods\AssetTest\dist\AssetTest - Textures.ba2 (122 bytes)
+    RESULT: OK, "AssetTest - Main.ba2" and "AssetTest - Textures.ba2" made in C:\Mods\AssetTest\dist
+    ...
+    RESULT: OK, AssetTest-0.1.0.zip passed the release check
+    RESULT: OK, built C:\Mods\AssetTest\AssetTest-0.1.0.zip
+
+`doctor` with a StarfieldCustom.ini that turns on only `bEnableLogging`:
+
+    > sf-mod-build doctor --my-games C:\Mods\mygames
+    ...
+    WARNING  StarfieldCustom.ini (Papyrus log, loose files): C:\Mods\mygames\StarfieldCustom.ini: doesn't set bEnableTrace=1, bLoadDebugInformation=1, bInvalidateOlderFiles=1
+    ...
+             fix: add these lines (each under its [section]), then restart the program:
+                 [Papyrus]
+                 bEnableTrace=1
+                 bLoadDebugInformation=1
+                 [Archive]
+                 bInvalidateOlderFiles=1
+    ...
+    RESULT: OK, ready to build (with 3 WARNINGS: see above)
+
+### Changes
+
+- New `assets` section in `sfmod.json`: `source` (a folder laid out like Data) and an optional `xboxTextures` folder of Xbox-format `.dds` files.
+- `pack` makes `<plugin> - Textures.ba2` (Archive2's DDS format) from every `.dds`, and puts the other loose files in `<plugin> - Main.ba2` with the compiled scripts. Each archive's files are copied into `<stage>\pack\` first, so each has one root folder.
+- A Main archive that holds a `.wem` or `.ffxanim` is packed with `-compression=None`, because compressed sound and lip files play silent. sf-mod-check's voice-compressed check confirms it.
+- With `"xbox": true`, `pack` makes `<plugin> - Main_xbox.ba2` and a separate `<plugin> - Textures_xbox.ba2` in creations-out. The Xbox texture archive takes `assets.xboxTextures` when it is given, else the PC textures (with a note that only a console test proves they look right).
+- `validate` lists each archive's files, refuses `.psc` source, plugins, archives and zips in the assets folder, files at its top level, and an assets folder that is or holds the mod, dist, stage, creations-out, the builder or a script source. It warns about source art (`.tif`, `.fbx` and so on), sounds with `xbox` on (a PC `.wem` is silent on consoles), and Xbox textures that don't match the PC set.
+- `pack` refuses an assets folder in the game's folder, a loose copy of a compiled script, and deletes a stale texture archive when the mod no longer has textures. `zip` needs the texture archive when the mod has textures. A mod with loose files but no scripts gets only the archives it needs.
+- A mod with scripts and no loose files is packed with exactly the same Archive2 command line as before.
+- `doctor` has a new setup section and a `--my-games <folder>` option (the folder that holds StarfieldCustom.ini, such as a Mod Organizer 2 profile). On Linux it looks in the game's Proton folder. It only reads the files.
+- The `dotnet new sfmod` template pins BuildKit 0.4.2 (was 0.4.0), has a commented-out `"assets"` line in `sfmod.json`, and its README says how to add art.
+
+### Download
+
+Download `sf-mod-build.0.2.0.nupkg` (dotnet tool) or `sf-mod-build-0.2.0-win-x64.zip` (program), plus `sf-mod-build-template-0.2.0.zip` for the starter template, and check them against `SHA256SUMS`. The README's Install section has the steps.
+
 ## 0.1.1 (2026-11-20)
 
 ### What's new

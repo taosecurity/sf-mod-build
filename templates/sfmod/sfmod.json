@@ -14,6 +14,8 @@
   "dist": "dist",
   "stage": ".build/stage",
   "xbox": false,
+  // Loose files (meshes, materials, textures, sounds), in a folder laid out like Data (Meshes, Textures ...):
+  // "assets": { "source": "Assets" },
   "zip": {
     "name": "{name}-{version}.zip",
     "files": {

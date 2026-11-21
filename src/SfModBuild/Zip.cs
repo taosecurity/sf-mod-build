@@ -41,9 +41,14 @@ internal static class Zip
             error = $"there is no {project.Plugin} in {project.Dist}. Fix: run sf-mod-build plugin first (or sf-mod-build build)";
             return null;
         }
-        if (project.Scripts != null && !File.Exists(Path.Combine(project.Dist, project.Ba2Name)))
+        if (project.HasMainArchive && !File.Exists(Path.Combine(project.Dist, project.Ba2Name)))
         {
-            error = $"there is no \"{project.Ba2Name}\" in {project.Dist}, and the mod has scripts. Fix: run sf-mod-build compile and sf-mod-build pack first (or sf-mod-build build)";
+            error = $"there is no \"{project.Ba2Name}\" in {project.Dist}, and the mod has {(project.Scripts != null ? "scripts" : "loose files")}. Fix: run {(project.Scripts != null ? "sf-mod-build compile and " : "")}sf-mod-build pack first (or sf-mod-build build)";
+            return null;
+        }
+        if (project.HasTexturesArchive && !File.Exists(Path.Combine(project.Dist, project.TexturesBa2Name)))
+        {
+            error = $"there is no \"{project.TexturesBa2Name}\" in {project.Dist}, and the mod has loose textures. Fix: run sf-mod-build pack first (or sf-mod-build build)";
             return null;
         }
         var list = new List<(string, string)>();

@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.1.1. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.2.0. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -24,8 +24,8 @@ background; this file has what to run.
    https://github.com/taosecurity/sf-mod-check/releases (`sf-mod-check.exe`).
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
-5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.0]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.1.1 was tested with BuildKit 0.4.0;
+5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.2]` and `Mutagen.Bethesda.Starfield`
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.2.0 was tested with BuildKit 0.4.2;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -65,7 +65,10 @@ sf-mod-build doctor
 ```
 
 Expect a list ending in a `RESULT:` line and exit code 0. Exit 2 means something needed is missing; the output
-says what and how to get it. A missing checker is only a WARNING (exit 0).
+says what and how to get it. A missing checker is only a WARNING (exit 0). So are the setup checks under
+`setup (not needed to build ...)`: StarfieldCustom.ini's Papyrus logging lines, CreationKitCustom.ini and the
+unpacked script sources. Each WARNING there prints the exact lines to add; show them to the person and let them
+edit the file (doctor never writes it).
 
 ## 5. Common tasks
 
@@ -79,6 +82,14 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Which game is used: the Steam copy when there is one (the Creation Kit's tools are only there), else Game Pass;
   `doctor` lists any other copy as a note. To pick one, or when none is found, add
   `--game "<folder holding Starfield.exe>"`.
+- Pack loose files (meshes, materials, textures, sounds): put them in a folder laid out like `Data` (for example
+  `Assets\Meshes\MyMod\Box.nif`, `Assets\Textures\MyMod\Box_color.dds`), add `"assets": { "source": "Assets" }` to
+  `sfmod.json`, then run `sf-mod-build validate` (it lists each archive's files and any refused file) and
+  `sf-mod-build build`. Textures go to `<Plugin> - Textures.ba2`, the rest to `<Plugin> - Main.ba2`.
+- Xbox-format textures for the Creations set: add `"xboxTextures": "Assets-xbox"` (a second folder with the same
+  layout) to the assets section, with `"xbox": true`. Without it, `<Plugin> - Textures_xbox.ba2` holds the PC
+  textures.
+- Check the INI settings of a Mod Organizer 2 profile: `sf-mod-build doctor --my-games "<profile folder>"`.
 - One step at a time: `sf-mod-build compile`, `sf-mod-build plugin`, `sf-mod-build pack`, `sf-mod-build zip`,
   `sf-mod-build check` (each needs the steps before it to have run).
 - Troubleshoot: add `--verbose`, or `--log sf-mod-build-log.txt`, to any command.
@@ -91,13 +102,19 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - The builder project named in `builder.project`, run as
   `dotnet run -c Release --project <builder> -- <builder.args>` with `{data} {dist} {scripts} {stage} {version}`
   filled in as full paths.
+- Loose files under `assets.source` (and Xbox textures under `assets.xboxTextures`), when the project has them.
 - The game folder (found by itself, or `--game`).
+- For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
+  `CreationKitCustom.ini` in the game folder, and `Data\Scripts\Source` (read, never written).
 
 ## 7. Outputs
 
 - `<stage>\Scripts\<Namespace>\*.pex` (default `.build\stage`), emptied and refilled by `compile`.
 - `<dist>\<Plugin>.esm` and `<dist>\<Plugin> - Main.ba2` (default `dist`), emptied and refilled by `plugin`.
-- With `"xbox": true`: `creations-out\` with dist's files plus `<Plugin> - Main_xbox.ba2`.
+- With loose textures: `<dist>\<Plugin> - Textures.ba2`. A mod with loose files but no scripts may have no Main
+  archive. pack copies the loose files into `<stage>\pack\` first.
+- With `"xbox": true`: `creations-out\` with dist's files plus `<Plugin> - Main_xbox.ba2` (and
+  `<Plugin> - Textures_xbox.ba2` when there are textures).
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
 - A cache of the game's script sources in `%LOCALAPPDATA%\sf-mod-build\vanilla\<sha256>\`.
 - Each command ends with one `RESULT:` line on stdout.
@@ -121,6 +138,11 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Never writes into the game folder: it refuses dist or creations-out folders inside it, and never empties a folder
   that is or holds the mod folder, a source folder, the builder or a drive root.
 - Never uploads anything, never changes the game's files, never edits the person's load order or mod manager.
+- Never packs an assets folder that is in the game's folder or holds it, the mod's own folder, dist, stage,
+  creations-out, the builder or a script source folder; validate refuses those.
+- doctor only reads the INI files and never writes them.
+- Doesn't convert art: `.tif`, `.fbx` and `.wav` are packed as they are (with a warning). Textures must already be
+  `.dds` and sounds `.wem`; the Creation Kit's own tools make those. A PC `.wem` is silent on Xbox and PlayStation 5.
 - Ships no game files; uses the Creation Kit's own tools from the person's game folder.
 - `compile` and `pack` need Windows (the Creation Kit's tools are Windows programs).
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare

@@ -1,5 +1,5 @@
 // sf-mod-build: builds a Starfield mod from one project file. Commands so far:
-//   sf-mod-build doctor [--game <folder>] [--checker <exe>] [--verbose] [--log <file>]
+//   sf-mod-build doctor [--game <folder>] [--checker <exe>] [--my-games <folder>] [--verbose] [--log <file>]
 //   sf-mod-build validate [sfmod.json] [--verbose] [--log <file>]
 //   sf-mod-build compile [sfmod.json] [--game <folder>] [--verbose] [--log <file>]
 //   sf-mod-build plugin [sfmod.json] [--game <folder>] [--verbose] [--log <file>]
@@ -30,11 +30,13 @@ namespace SfModBuild
         public const string Usage =
             "usage: sf-mod-build <command> [options]\n" +
             "commands:\n" +
-            "  doctor      find the game, the Creation Kit's tools, .NET and the checker; say how to get anything missing\n" +
+            "  doctor      find the game, the Creation Kit's tools, .NET and the checker; say how to get anything missing;\n" +
+            "              then check the setup (Papyrus logging lines, CreationKitCustom.ini, unpacked script sources)\n" +
             "  validate    check a project file (sfmod.json) and show what a build would use\n" +
             "  compile     compile the mod's Papyrus scripts with the Creation Kit's compiler (never -release)\n" +
             "  plugin      run the mod's Mutagen builder to write the plugin into dist\n" +
-            "  pack        pack the compiled scripts into the BA2 with the Creation Kit's Archive2 (and the Xbox one)\n" +
+            "  pack        pack the compiled scripts and loose files into the BA2s with the Creation Kit's Archive2\n" +
+            "              (Main and Textures, and the _xbox ones for Creations)\n" +
             "  zip         write the mod's zip reproducibly (same files, same bytes)\n" +
             "  check       run sf-mod-check (or sfmodcheck) release on the zip\n" +
             "  build       compile, plugin, pack, zip and check in order\n" +

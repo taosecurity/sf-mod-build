@@ -65,7 +65,7 @@ public class TemplateTests
     public void TemplateBuilderPinsExactVersions()
     {
         var csproj = Read("Builder", "MyMod.Builder.csproj");
-        Assert.Contains("<PackageReference Include=\"Taosecurity.Starfield.BuildKit\" Version=\"[0.4.0]\" />", csproj);
+        Assert.Contains("<PackageReference Include=\"Taosecurity.Starfield.BuildKit\" Version=\"[0.4.2]\" />", csproj);
         Assert.Contains("<PackageReference Include=\"Mutagen.Bethesda.Starfield\" Version=\"[0.54.4]\" />", csproj);
         Assert.Contains("<TargetFramework>net9.0</TargetFramework>", csproj);
         Assert.Contains("<RollForward>Major</RollForward>", csproj);
