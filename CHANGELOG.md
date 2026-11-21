@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-20)
 
 ### What's new
 
@@ -51,6 +51,10 @@ A starter mod with a mesh, a material and a texture added in its `Assets` folder
 - A mod with scripts and no loose files is packed with exactly the same Archive2 command line as before.
 - `doctor` has a new setup section and a `--my-games <folder>` option (the folder that holds StarfieldCustom.ini, such as a Mod Organizer 2 profile). On Linux it looks in the game's Proton folder, and when no game is found it says so and names `--game` and `--my-games`. For loose files it asks only for `bInvalidateOlderFiles=1` under `[Archive]`, the line Bethesda's Creation Kit pages ask for; it doesn't ask for `sResourceDataDirsFinal`, which Bethesda's INI page says to avoid. A comment after a value (`; ...` or `# ...`) is ignored. It only reads the files.
 - The `dotnet new sfmod` template pins BuildKit 0.4.2 (was 0.4.0), has a commented-out `"assets"` line in `sfmod.json`, and its README says how to add art.
+
+### Upgrading from 0.1.1
+
+- 0.2.0 ships only the archives it builds. In 0.1.1, `zip` also shipped any other `.ba2` your builder wrote into dist, and `zip.files` could list an extra archive. Both now stop the build with exit 2 and say which file to remove. If your mod ships an archive sf-mod-build doesn't make, stay on 0.1.1 for now.
 
 ### Download
 
