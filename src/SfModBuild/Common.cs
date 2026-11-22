@@ -123,13 +123,21 @@ internal static class Common
         && !project.ArchiveNames.Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The fix for an archive the build doesn't make, in dist or in zip.files.</summary>
-    public const string StrayArchiveFix = "delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds";
+    public const string StrayArchiveFix = "delete it from dist; sf-mod-build ships only the archives it builds";
 
     /// <summary>Why a stray archive stops the zip or the Creations set, with the fix.</summary>
     public static string StrayArchiveError(SfModProject project, string file, string what)
     {
         var made = project.ArchiveNames.Any() ? string.Join(" and ", project.ArchiveNames.Select(n => $"\"{n}\"")) : "none";
         return $"{file} is an archive in dist that this build doesn't make (the mod's archives are {made}), so {what} can't take it. "
+            + $"Fix: {StrayArchiveFix}";
+    }
+
+    /// <summary>pack's warning (without "xbox") about a stray archive that zip will stop on, with the fix.</summary>
+    public static string StrayArchiveWarning(SfModProject project, string file)
+    {
+        var made = project.ArchiveNames.Any() ? string.Join(" and ", project.ArchiveNames.Select(n => $"\"{n}\"")) : "none";
+        return $"{file} is an archive in dist that this build doesn't make (the mod's archives are {made}), so zip will stop on it. "
             + $"Fix: {StrayArchiveFix}";
     }
 

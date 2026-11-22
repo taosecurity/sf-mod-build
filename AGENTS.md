@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.2.0. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.2.1. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -25,7 +25,7 @@ background; this file has what to run.
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
 5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.2]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.2.0 was tested with BuildKit 0.4.2;
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.2.1 was tested with BuildKit 0.4.2;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -118,7 +118,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   `<Plugin> - Textures_xbox.ba2` when there are textures).
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
   A `.ba2` in dist that the build doesn't make stops zip (and pack with `"xbox": true`) with exit 2 and a RESULT
-  line naming it; tell the person to delete it from dist (sf-mod-build 0.2.0 ships only the archives it builds;
+  line naming it (pack without xbox only prints a `WARNING` line naming it and exits 0); tell the person to delete
+  it from dist (sf-mod-build ships only the archives it builds;
   `zip.files` takes no archives, and validate reports a `.ba2` there as a PROBLEM). pack deletes the mod's own old
   archives from dist when the mod no longer needs them (and from creations-out when xbox is on and there is nothing
   to pack; the other files there stay as the last build left them).
@@ -154,5 +155,5 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
 - Don't hand-edit files in dist, stage or creations-out: the next build empties them.
-- Archives the builder writes itself aren't supported in 0.2.0: their files go in the assets folder, so pack builds
+- Archives the builder writes itself aren't supported: their files go in the assets folder, so pack builds
   them into the mod's own archives.

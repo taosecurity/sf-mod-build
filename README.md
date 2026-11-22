@@ -133,7 +133,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.2.0.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.2.1.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -142,13 +142,14 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.2.0-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.2.0-win-x64.zip SHA256` prints the hash). Right-click the zip,
+- **As a program**: download `sf-mod-build-0.2.1-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.2.1-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
+  `sha256sum -c SHA256SUMS` in the download folder checks every file, from 0.2.1 on). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.2.0.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.2.1.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -193,7 +194,7 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.4.2 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.4.2 is the
-  BuildKit version sf-mod-build 0.2.0 was tested with. The starter plugin it makes is byte for byte the same as
+  BuildKit version sf-mod-build 0.2.1 was tested with. The starter plugin it makes is byte for byte the same as
   with BuildKit 0.4.0, which earlier versions of the template used.
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
@@ -333,20 +334,20 @@ case), and with `"xbox": true` and nothing left to pack it also deletes the mod'
 creations-out.
 
 Any other `.ba2` in dist that the build doesn't make stops `zip` (and `pack` with `"xbox": true`)
-with a RESULT line naming it, so a build never passes while silently leaving out an archive. The fix is to delete it
-from dist: sf-mod-build 0.2.0 ships only the archives it builds. `zip.files` takes no archives either; `validate`
+with a RESULT line naming it, so a build never passes while silently leaving out an archive. Without `"xbox": true`,
+`pack` names each such archive in a WARNING line and goes on, so you hear about it before `zip`. The fix is to delete it
+from dist: sf-mod-build ships only the archives it builds. `zip.files` takes no archives either; `validate`
 reports a `.ba2` there as a PROBLEM. The mod's own archives go into the zip under their usual names, even when dist
 has them spelled in other letter case.
 
-### Limits in 0.2.0
+### Limits
 
 - Archives your builder writes itself aren't supported: put those files in the assets folder instead, so `pack`
   builds them into the mod's own archives.
 - With `"xbox": true` and nothing left to pack, `pack` deletes only the mod's old archives from creations-out; the
-  plugin and other files there stay as the last build left them.
-- In `doctor`, a value with a closed quote and then a quote that is never closed is cut at its first `;` or `#`,
-  even when that is inside the closed quote. Such a line is broken anyway; `doctor` only warns, and never stops a
-  build.
+  plugin and other files there stay as the last build left them, so creations-out isn't refreshed on that path.
+- creations-out takes dist's files only (the plugin and the archives). Other `zip.files` entries, such as a README
+  or LICENSE, go into the zip but not into creations-out, since a Creation takes the plugin and its archives.
 
 ## Setup checks in doctor
 
@@ -366,7 +367,7 @@ For loose files, `bInvalidateOlderFiles=1` under `[Archive]` in both files is th
 official Creation Kit wiki's "Creation Kit Setup and Installation", "Initialization (.ini) Settings" and "Creating
 Overlays and World Spaces" pages). `doctor` doesn't ask for `sResourceDataDirsFinal`: the official INI page says to
 avoid it, and that it only works when `bInvalidateOlderFiles` is off. A comment after a value (`; ...` or `# ...`)
-is ignored.
+is ignored. A `;` or `#` inside double quotes is part of the value; a quote that is never closed doesn't count as one.
 
 `doctor` only reads these files; it never writes an INI file. If Mod Organizer 2 keeps INI files per profile, give
 the profile's folder with `--my-games <folder>`. On Linux the default is the game's Proton folder

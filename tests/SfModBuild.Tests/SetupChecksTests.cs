@@ -227,6 +227,16 @@ public class SetupChecksTests
         Assert.Equal("\"open", SetupChecks.WithoutComment("\"open"));
     }
 
+    [Theory]
+    [InlineData("\"a;b\" \"c", "\"a;b\" \"c")]
+    [InlineData("\"a;b\" \"c ; note", "\"a;b\" \"c")]
+    [InlineData("\"a#b\" \"c#d;e", "\"a#b\" \"c")]
+    [InlineData("\"a;b\" x \"c", "\"a;b\" x \"c")]
+    public void WithoutCommentKeepsAClosedQuoteBeforeAnUnclosedOne(string value, string expected)
+    {
+        Assert.Equal(expected, SetupChecks.WithoutComment(value));
+    }
+
     [Fact]
     public void LooseFilesNeedOnlyTheArchiveLineBethesdaAsksFor()
     {

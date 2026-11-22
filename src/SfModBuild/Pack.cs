@@ -8,8 +8,8 @@
 // and "<plugin> - Main_xbox.ba2" and "<plugin> - Textures_xbox.ba2" are packed there with -compression=XBox. The Xbox
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
 // given (Xbox-format exports, which must cover every PC texture), else the PC textures. Pack deletes the mod's own old
-// archives from dist (names match without case), and with "xbox" on it refuses any other .ba2 in dist (0.2.0 ships
-// only the archives it builds), so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
+// archives from dist (names match without case), and with "xbox" on it refuses any other .ba2 in dist (sf-mod-build
+// ships only the archives it builds), so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
 // the mod's own old archives from creations-out too.
 // A scripts-only mod is packed straight from <stage>/Scripts, as before loose files were supported. With loose files,
 // each archive's files are first copied into <stage>/pack/<archive>, so every archive has one root.
@@ -36,7 +36,7 @@ internal static class Pack
         {
             // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip
             if (DeleteStale(project, stdout) is { } code) return code;
-            if (DeleteStaleCreations(project, stdout) is { } xboxCode) return xboxCode;
+            if (DeleteStaleCreations(project, p.Get("--game"), env, stdout) is { } xboxCode) return xboxCode;
             stdout.WriteLine($"RESULT: OK, nothing to pack (the project has no scripts{(project.Assets != null ? " and its assets folder has no files" : " and no assets")})");
             return ExitCodes.Ok;
         }
@@ -127,7 +127,14 @@ internal static class Pack
             return ExitCodes.BadInput;
         }
         if (DeleteStale(project, stdout) is { } staleCode) return staleCode;
-        if (project.Xbox)
+        if (!project.Xbox)
+        {
+            // without the Creations set pack doesn't need to stop here, but zip will: say so one command earlier
+            foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.Ordinal)
+                         .Where(f => Common.Shippable(f) && Common.StrayArchive(project, f)))
+                stdout.WriteLine($"WARNING  {Common.StrayArchiveWarning(project, f)}");
+        }
+        else
         {
             // checked before any archive is made: the Creations set takes dist's files, so an archive there that this
             // build doesn't make would otherwise be left out of it, or shipped stale
@@ -338,17 +345,21 @@ internal static class Pack
 
     /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
     /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
-    /// folder is otherwise left as it is. Null when done, else the exit code to return.</summary>
-    static int? DeleteStaleCreations(SfModProject project, TextWriter stdout)
+    /// folder is otherwise left as it is. The game's folder is looked up only when there is something to delete, and
+    /// a game that isn't found doesn't stop this path (nothing here needs the game's tools); when it is found,
+    /// creations-out may not be, hold or be inside it, as on the full pack. Null when done, else the exit code.</summary>
+    static int? DeleteStaleCreations(SfModProject project, string? gameOption, IHostEnv env, TextWriter stdout)
     {
         if (!project.Xbox || !Directory.Exists(project.CreationsOut)) return null;
         var files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
             .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
         if (files.Count == 0) return null;
+        var game = Common.FindGame(gameOption, env, out var gameError);
+        if (game == null) Log.Write($"creations-out: the game's folder wasn't found ({gameError}); checking without it");
         string? why;
         try
         {
-            why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project))
+            why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), game == null ? null : new[] { game.Folder })
                   ?? (new DirectoryInfo(project.CreationsOut).LinkTarget is { } to ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}" : null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

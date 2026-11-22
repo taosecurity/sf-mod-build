@@ -317,7 +317,7 @@ public class AssetsTests
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"zip.files[\"{source}\"]", output);
             Assert.Contains("PROBLEM:", output);
-            Assert.Contains("delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+            Assert.Contains("delete it from dist; sf-mod-build ships only the archives it builds", output);
         }
     }
 
@@ -554,7 +554,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "zip", sfmod);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("Fix: delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+            Assert.Contains("Fix: delete it from dist; sf-mod-build ships only the archives it builds", output);
             Assert.DoesNotContain("zip.files", output);
             Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
         }
@@ -572,7 +572,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"{extra} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("Fix: delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+            Assert.Contains("Fix: delete it from dist; sf-mod-build ships only the archives it builds", output);
             Assert.Empty(env.Execs);
             Assert.False(File.Exists(Mod(t, "creations-out", "Extra.ba2")));
             t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "main");
@@ -631,7 +631,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT PACK ({other} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("Fix: delete it from dist; sf-mod-build 0.2.0 ships only the archives it builds", output);
+            Assert.Contains("Fix: delete it from dist; sf-mod-build ships only the archives it builds", output);
             Assert.Empty(env.Execs);   // refused before any archive is made
             Assert.False(File.Exists(Mod(t, "creations-out", "Old - Main.ba2")));
         }
@@ -644,9 +644,29 @@ public class AssetsTests
         using (t)
         {
             CompiledScripts(t);
-            t.File(Path.Combine("mod", "dist", "Old - Main.ba2"), "copied in by hand");
+            var other = t.File(Path.Combine("mod", "dist", "Old - Main.ba2"), "copied in by hand");
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.True(code == ExitCodes.Ok, output);
+            // a warning only (zip stops on it), naming the file and the fix, once
+            Assert.Contains($"WARNING  {other} is an archive in dist that this build doesn't make", output);
+            Assert.Contains("so zip will stop on it. Fix: delete it from dist", output);
+            Assert.Single(output.Split('\n'), l => l.StartsWith("WARNING"));
+        }
+    }
+
+    [Fact]
+    public void WithoutXboxPackDoesntWarnAboutTheModsOwnArchives()
+    {
+        var (t, sfmod, game, env) = Setup();
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "mymod - main.ba2"), "an old copy, spelled in lower case");
+            t.File(Path.Combine("mod", "dist", "MyMod-0.1.0.zip"), "an old zip");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.DoesNotContain("WARNING", output);
         }
     }
 
@@ -670,6 +690,46 @@ public class AssetsTests
             Assert.True(File.Exists(other));
             Assert.Empty(env.Execs);
         }
+    }
+
+    const string NothingToPackJson = """
+        {
+          "plugin": "MyMod.esm",
+          "version": "0.1.0",
+          "xbox": true,
+          "builder": { "project": "Builder", "args": ["{data}", "{dist}"] }
+        }
+        """;
+
+    [Fact]
+    public void NothingToPackRefusesACreationsFolderInsideTheGame()
+    {
+        // the mod's folder is the game's folder, and creationsOut is the game's Data folder: the old archive there is
+        // the installed copy, so it must not be deleted (the full pack refuses this folder too)
+        using var t = new TempDir();
+        var game = Fake.Game(t, "game");
+        t.File(Path.Combine("game", "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine("game", "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"xbox\": true, \"creationsOut\": \"Data\","));
+        var installed = t.File(Path.Combine("game", "Data", "MyMod - Main.ba2"), "the installed archive");
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("game's folder", output);
+        Assert.True(File.Exists(installed));
+    }
+
+    [Fact]
+    public void NothingToPackStillDeletesWhenTheGameIsNotFound()
+    {
+        using var t = new TempDir();
+        t.File(Path.Combine("mod", "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine("mod", "sfmod.json"), NothingToPackJson);
+        var old = t.File(Path.Combine("mod", "creations-out", "MyMod - Main_xbox.ba2"), "old");
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", Path.Combine(t.Path, "no-such-game"));
+        Assert.True(code == ExitCodes.Ok, output);
+        Assert.Contains("nothing to pack", output);
+        Assert.False(File.Exists(old));
     }
 
     [Fact]

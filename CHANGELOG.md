@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.1 (unreleased)
+
+### Changed
+
+- `pack` without `xbox` now prints a `WARNING` line for each `.ba2` in dist that the build doesn't make, so you hear about it before `zip` stops on it. The exit code is unchanged (0).
+- The README's limits now say that creations-out isn't refreshed when there is nothing to pack, and that `zip.files` entries such as a README or LICENSE go into the zip but not into creations-out.
+
+### Fixed
+
+- The release's `SHA256SUMS` file now has LF line endings. From 0.1.1 to 0.2.0 it had Windows line endings, so `sha256sum -c SHA256SUMS` on Linux or in Git Bash reported every file as missing. The release workflow now runs `sha256sum -c SHA256SUMS` itself before it makes the release.
+- `doctor` reads INI comments more carefully. A `;` or `#` inside double quotes is part of the value, and a quote that is never closed doesn't count as one. Before, a closed quote followed by an unclosed one (`"a;b" "c`) cut the value at the `;` inside the closed quote.
+- `pack` with `xbox` on and nothing to pack now also refuses a creations-out folder that is, holds or is inside the game's folder before it deletes the mod's old archives there, as a full `pack` already did. When the game isn't found, this path still works without it.
+
+### Example
+
+This is `pack` on a made-up mod with one mesh, after an old archive was copied into dist by hand (folder names are shortened):
+
+    > sf-mod-build pack sfmod.json
+    WARNING  C:\Mods\MyMod\dist\Old - Main.ba2 is an archive in dist that this build doesn't make (the mod's archives are "MyMod - Main.ba2"), so zip will stop on it. Fix: delete it from dist; sf-mod-build ships only the archives it builds
+    staged   1 general and 0 texture file(s) from C:\Mods\MyMod\Assets
+    packed   C:\Mods\MyMod\dist\MyMod - Main.ba2 (103 bytes)
+    RESULT: OK, C:\Mods\MyMod\dist\MyMod - Main.ba2 made
+
+This is the new check of the downloads, in Git Bash in the folder holding the release's files:
+
+    $ sha256sum -c SHA256SUMS
+    sf-mod-build-0.2.1-win-x64.zip: OK
+    sf-mod-build-template-0.2.1.zip: OK
+    sf-mod-build.0.2.1.nupkg: OK
+
 ## 0.2.0 (2026-11-20)
 
 ### What's new
@@ -12,7 +42,7 @@ The starter template moves to BuildKit 0.4.2. Its plugin is byte for byte the sa
 
 ### Example
 
-A starter mod with a mesh, a material and a texture added in its `Assets` folder (folder names shortened):
+This is a starter mod with a mesh, a material and a texture added in its `Assets` folder (folder names are shortened):
 
     > sf-mod-build build --checker C:\Tools\sf-mod-check.exe
     ...
@@ -25,7 +55,7 @@ A starter mod with a mesh, a material and a texture added in its `Assets` folder
     RESULT: OK, AssetTest-0.1.0.zip passed the release check
     RESULT: OK, built C:\Mods\AssetTest\AssetTest-0.1.0.zip
 
-`doctor` with a StarfieldCustom.ini that turns on only `bEnableLogging`:
+This is `doctor` with a StarfieldCustom.ini that turns on only `bEnableLogging`:
 
     > sf-mod-build doctor --my-games C:\Mods\mygames
     ...
@@ -42,7 +72,7 @@ A starter mod with a mesh, a material and a texture added in its `Assets` folder
 
 ### Changes
 
-- New `assets` section in `sfmod.json`: `source` (a folder laid out like Data) and an optional `xboxTextures` folder of Xbox-format `.dds` files.
+- A new `assets` section in `sfmod.json` holds `source` (a folder laid out like Data) and an optional `xboxTextures` folder of Xbox-format `.dds` files.
 - `pack` makes `<plugin> - Textures.ba2` (Archive2's DDS format) from every `.dds`, and puts the other loose files in `<plugin> - Main.ba2` with the compiled scripts. Each archive's files are copied into `<stage>\pack\` first, so each has one root folder.
 - A Main archive that holds a `.wem` or `.ffxanim` is packed with `-compression=None`, because compressed sound and lip files play silent. sf-mod-check's voice-compressed check confirms it.
 - With `"xbox": true`, `pack` makes `<plugin> - Main_xbox.ba2` and a separate `<plugin> - Textures_xbox.ba2` in creations-out. The Xbox texture archive takes `assets.xboxTextures` when it is given, else the PC textures (with a note that only a console test proves they look right).
@@ -121,19 +151,19 @@ Then a new mod builds in three commands, and the last line names the zip (folder
 
 ### How it works
 
-- One project file per mod, `sfmod.json`: plugin, version, script folders and namespaces, the Mutagen builder and its arguments (`{data} {dist} {scripts} {stage} {version}`), dist, stage, the Xbox archive for Creations, the zip's name, folder and extra files, and the checker. Comments and trailing commas are allowed; every problem names the field and the fix.
-- Commands: `doctor`, `validate`, `compile`, `plugin`, `pack`, `zip`, `check` and `build` (all five build steps in order), each with `--help`, `--verbose` and `--log <file>`. Exit codes are 0 OK, 1 failed, 2 bad input or setup.
+- Each mod has one project file, `sfmod.json`, which holds the plugin, version, script folders and namespaces, the Mutagen builder and its arguments (`{data} {dist} {scripts} {stage} {version}`), dist, stage, the Xbox archive for Creations, the zip's name, folder and extra files, and the checker. Comments and trailing commas are allowed; every problem names the field and the fix.
+- The commands are `doctor`, `validate`, `compile`, `plugin`, `pack`, `zip`, `check` and `build` (all five build steps in order), each with `--help`, `--verbose` and `--log <file>`. Exit codes are 0 OK, 1 failed, 2 bad input or setup.
 - `compile` runs the Creation Kit's PapyrusCompiler once per script with the game's script sources, unpacked once from `Tools\ContentResources.zip` into a cache. It never compiles with `-release` and refuses it with the reason.
 - `pack` makes `<plugin> - Main.ba2` with the Creation Kit's Archive2, and with `"xbox": true` the Creations upload set with `<plugin> - Main_xbox.ba2`.
 - `zip` writes the same bytes from the same files (sorted entries, fixed timestamps), never with `.psc` files.
 - `check` runs the `release` command of sf-mod-check 0.7.0 or later (called sfmodcheck before it was renamed) on the zip; without a checker it's a WARNING, or a failure with `--require-check`.
 - Safety: the folders the tool empties (stage, dist, creations-out) are refused when they are or hold the mod, its sources or its builder, a drive root, or anything in the game's folder.
-- The `dotnet new sfmod` template: a builder on BuildKit 0.4.0 and Mutagen 0.54.4 (pinned exactly) that makes a light master with one quest, a starter script with `Debug.Trace` logging, a "Show Debug Messages (PC only)" switch in the mod's own Gameplay Options group, and a README that says how to turn on Papyrus logging. Options `--prefix` and `--mod-author`.
-- Tested by rebuilding three existing mods; each plugin came out byte-identical to the released one (or the one difference was explained), with the scripts the same by meaning.
+- The `dotnet new sfmod` template has a builder on BuildKit 0.4.0 and Mutagen 0.54.4 (pinned exactly) that makes a light master with one quest, a starter script with `Debug.Trace` logging, a "Show Debug Messages (PC only)" switch in the mod's own Gameplay Options group, and a README that says how to turn on Papyrus logging. It takes the options `--prefix` and `--mod-author`.
+- It was tested by rebuilding three existing mods; each plugin came out byte-identical to the released one (or the one difference was explained), with the scripts the same by meaning.
 
 ### Download
 
 - `sf-mod-build.0.1.0.nupkg`: install it as a dotnet tool with `dotnet tool install --global sf-mod-build --add-source <folder holding the .nupkg>`.
-- `sf-mod-build-0.1.0-win-x64.zip`: the program on its own; unzip it and put the folder on PATH.
-- `sf-mod-build-template-0.1.0.zip`: the starter project; unzip it into a folder of its own and run `dotnet new install "<that folder>"`.
+- `sf-mod-build-0.1.0-win-x64.zip` is the program on its own; unzip it and put the folder on PATH.
+- `sf-mod-build-template-0.1.0.zip` is the starter project; unzip it into a folder of its own and run `dotnet new install "<that folder>"`.
 - Check the downloads against `SHA256SUMS`. The [README](https://github.com/taosecurity/sf-mod-build#install) has the steps.

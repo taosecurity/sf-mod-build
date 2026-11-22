@@ -25,17 +25,23 @@ internal static class SetupChecks
     static bool IsOne(string v) => v.Split(new[] { ' ', '\t', ';', '#' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() == "1";
     static bool IsZero(string v) => v.Split(new[] { ' ', '\t', ';', '#' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() == "0";
 
-    /// <summary>The value without a trailing ; or # comment (one inside double quotes is part of the value). When a
-    /// quote is never closed, nothing counts as quoted: the value ends at the first ; or #.</summary>
+    /// <summary>The value without a trailing ; or # comment (one inside closed double quotes is part of the value).
+    /// A quote that is never closed doesn't count as a quote: from it on, the value ends at the first ; or #.</summary>
     public static string WithoutComment(string v)
     {
         var quoted = false;
+        var openedAt = -1;
         for (var i = 0; i < v.Length; i++)
         {
-            if (v[i] == '"') quoted = !quoted;
+            if (v[i] == '"')
+            {
+                quoted = !quoted;
+                if (quoted) openedAt = i;
+            }
             else if (!quoted && v[i] is ';' or '#') return v[..i].TrimEnd();
         }
-        if (quoted && v.IndexOfAny(new[] { ';', '#' }) is var first and >= 0) return v[..first].TrimEnd();
+        // only the unclosed quote's part is unquoted; a ; or # inside an earlier, closed quote stays in the value
+        if (quoted && v.IndexOfAny(new[] { ';', '#' }, openedAt) is var first and >= 0) return v[..first].TrimEnd();
         return v.Trim();
     }
 
