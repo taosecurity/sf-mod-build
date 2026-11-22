@@ -881,9 +881,96 @@ public class AssetsTests
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             if (!OperatingSystem.IsWindows()) throw;
-            var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true })!;
-            mk.WaitForExit();
-            Assert.True(Directory.Exists(link), "mklink /J failed");
+            var (exit, said) = Cmd($"mklink /J \"{link}\" \"{target}\"");
+            // Directory.Exists alone would also pass for a plain folder already there
+            Assert.True(exit == 0 && new DirectoryInfo(link).LinkTarget != null, $"mklink /J failed (exit {exit}): {said}");
+        }
+    }
+
+    /// <summary>Runs a cmd.exe command line; its exit code and everything it printed.</summary>
+    static (int Exit, string Said) Cmd(string line)
+    {
+        var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c " + line)
+            { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true })!;
+        var said = mk.StandardOutput.ReadToEnd() + mk.StandardError.ReadToEnd();
+        mk.WaitForExit();
+        return (mk.ExitCode, said);
+    }
+
+    /// <summary>Makes <paramref name="link"/> a hard link to the file <paramref name="target"/>; false where this
+    /// system can't (not Windows, Linux or macOS).</summary>
+    static bool HardLink(string link, string target)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var (exit, said) = Cmd($"mklink /H \"{link}\" \"{target}\"");
+            Assert.True(exit == 0, $"mklink /H failed (exit {exit}): {said}");
+            return true;
+        }
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return false;
+        var ln = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ln", $"\"{target}\" \"{link}\"")
+            { UseShellExecute = false, RedirectStandardError = true })!;
+        ln.WaitForExit();
+        Assert.True(ln.ExitCode == 0, "ln failed: " + ln.StandardError.ReadToEnd());
+        return true;
+    }
+
+    [Fact]
+    public void FullPackDoesNotWriteThroughAHardLinkedArchive()
+    {
+        // dist's "MyMod - Main.ba2" shares its file with one outside the mod (a game's archive, say): writing the new
+        // archive at that name must not change the other file (Archive deletes the name first; this pins that)
+        var (t, sfmod, game, env) = Setup(Json);
+        using (t)
+        {
+            CompiledScripts(t);
+            var outside = t.File(Path.Combine("outside", "Official - Main.ba2"), "the game's own archive");
+            t.Dir(Path.Combine("mod", "dist"));
+            var main = Mod(t, "dist", "MyMod - Main.ba2");
+            if (!HardLink(main, outside)) return;
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("the game's own archive", File.ReadAllText(outside));
+            Assert.NotEqual("the game's own archive", File.ReadAllText(main));
+        }
+    }
+
+    [Fact]
+    public void FullPackDoesNotWriteThroughASymlinkedArchive()
+    {
+        // as with the hard link: Archive deletes the name (only the link) before Archive2 writes a real archive there
+        var (t, sfmod, game, env) = Setup(Json);
+        using (t)
+        {
+            CompiledScripts(t);
+            var outside = t.File(Path.Combine("outside", "Official - Main.ba2"), "the game's own archive");
+            t.Dir(Path.Combine("mod", "dist"));
+            var main = Mod(t, "dist", "MyMod - Main.ba2");
+            try { File.CreateSymbolicLink(main, outside); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return; } // no file symlinks without admin or Developer Mode
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("the game's own archive", File.ReadAllText(outside));
+            Assert.Null(new FileInfo(main).LinkTarget);
+        }
+    }
+
+    [Fact]
+    public void FullPackRefusesADistLinkSpelledWithATrailingSlash()
+    {
+        // "dist/": on Linux readlink on a path ending in a separator follows the link, so it must be trimmed first
+        var (t, sfmod, game, env) = Setup(Json.Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"dist\": \"dist/\","));
+        using (t)
+        {
+            CompiledScripts(t);
+            var outside = t.Dir("outside");
+            var installed = t.File(Path.Combine("outside", "MyMod - Main.ba2"), "the installed archive");
+            Link(Mod(t, "dist"), outside);
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("is a link or junction to", output);
+            Assert.Empty(env.Execs);
+            Assert.Equal("the installed archive", File.ReadAllText(installed));
         }
     }
 

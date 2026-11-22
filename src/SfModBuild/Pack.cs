@@ -353,14 +353,24 @@ internal static class Pack
             {
                 foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name })
                     foreach (var path in Common.FilesNamed(project.Dist, name))
-                        // the archive this build makes is replaced by Archive2 at its exact name
+                        // the archive this build makes is deleted at its exact name by Archive just before Archive2
+                        // writes it (so a link there is removed, never written through)
                         if (!(made.Contains(name) && Path.GetFileName(path) == name)) old.Add(path);
-                if (old.Count == 0) return null;
-                why = Plugin.UnsafeDist(project, games());
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 why = $"the dist folder {project.Dist} can't be checked ({e.Message})";
+            }
+            if (why == null && old.Count == 0) return null;
+            if (why == null)
+            {
+                // the game lookup stays outside the dist check's catch, so its errors aren't blamed on dist
+                var never = games();
+                try { why = Plugin.UnsafeDist(project, never); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    why = $"the dist folder {project.Dist} can't be checked ({e.Message})";
+                }
             }
         }
         if (why != null)
@@ -396,7 +406,7 @@ internal static class Pack
     {
         try
         {
-            return new DirectoryInfo(project.Dist).LinkTarget is { } to
+            return FolderLink(project.Dist) is { } to
                 ? $"the dist folder {project.Dist} is a link or junction to {to}, so pack would delete and write archives wherever it points"
                 : null;
         }
@@ -405,6 +415,10 @@ internal static class Pack
             return $"the dist folder {project.Dist} can't be checked ({e.Message})";
         }
     }
+
+    /// <summary>Where a folder that is a link or junction points, or null. A trailing separator is dropped first:
+    /// on Linux, readlink on "dist/" follows the link and fails, so the link wouldn't be seen.</summary>
+    static string? FolderLink(string folder) => new DirectoryInfo(Path.TrimEndingDirectorySeparator(folder)).LinkTarget;
 
     static string DistRefused(SfModProject project, string why) =>
         $"RESULT: CANNOT PACK ({why}). Fix: in {project.File}, set \"dist\" to a folder of its own, for example \"dist\".";
@@ -442,7 +456,7 @@ internal static class Pack
         try
         {
             why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), never.Count == 0 ? null : never)
-                  ?? (new DirectoryInfo(project.CreationsOut).LinkTarget is { } to ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}" : null);
+                  ?? (FolderLink(project.CreationsOut) is { } to ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}" : null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
