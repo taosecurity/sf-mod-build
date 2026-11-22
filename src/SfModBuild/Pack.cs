@@ -34,9 +34,12 @@ internal static class Pack
         if (project == null) return ExitCodes.BadInput;
         if (!project.HasMainArchive && !project.HasTexturesArchive)
         {
-            // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip
-            if (DeleteStale(project, stdout) is { } code) return code;
-            if (DeleteStaleCreations(project, p.Get("--game"), env, stdout) is { } xboxCode) return xboxCode;
+            // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip;
+            // the game folders are looked up once, and only when there is something to delete
+            List<string>? found = null;
+            List<string> Games() => found ??= NothingToPackGames(project, p.Get("--game"), env, stdout);
+            if (DeleteStale(project, Games, stdout) is { } code) return code;
+            if (DeleteStaleCreations(project, Games, stdout) is { } xboxCode) return xboxCode;
             stdout.WriteLine($"RESULT: OK, nothing to pack (the project has no scripts{(project.Assets != null ? " and its assets folder has no files" : " and no assets")})");
             return ExitCodes.Ok;
         }
@@ -117,6 +120,12 @@ internal static class Pack
             stdout.WriteLine($"RESULT: CANNOT PACK ({unsafeWhy}). Fix: in {project.File}, set \"creationsOut\" to a folder of its own, for example \"creations-out\".");
             return ExitCodes.BadInput;
         }
+        // dist gets the new archives and loses the old ones: it may not be or be inside any install either
+        if (Plugin.UnsafeDist(project, games) is { } distWhy)
+        {
+            stdout.WriteLine(DistRefused(project, distWhy));
+            return ExitCodes.BadInput;
+        }
         if (project.Assets != null && AssetsInGame(project.Assets, gameFolder) is { } inGame)
         {
             stdout.WriteLine($"RESULT: CANNOT PACK ({inGame}). Fix: copy the mod's own loose files into a folder of the mod, for example \"Assets\", and point assets.source at it.");
@@ -128,7 +137,7 @@ internal static class Pack
             stdout.WriteLine($"RESULT: CANNOT PACK (the dist folder {project.Dist} can't be made: {e.Message}).");
             return ExitCodes.BadInput;
         }
-        if (DeleteStale(project, stdout) is { } staleCode) return staleCode;
+        if (DeleteStale(project, () => games, stdout) is { } staleCode) return staleCode;
         if (!project.Xbox)
         {
             // without the Creations set pack doesn't need to stop here, but zip will: say so one command earlier
@@ -330,43 +339,64 @@ internal static class Pack
 
     /// <summary>Deletes from dist each of the mod's archives this build doesn't make any more (the mod's textures or
     /// scripts were removed), and any copy of an archive it does make spelled in other letter case (a case-sensitive
-    /// disk can hold both), so neither can reach the zip. Null when done, else the exit code to return.</summary>
-    static int? DeleteStale(SfModProject project, TextWriter stdout)
+    /// disk can hold both), so neither can reach the zip. Before deleting anything, dist may not be or be inside any
+    /// of <paramref name="games"/> (asked for only then). Null when done, else the exit code to return.</summary>
+    static int? DeleteStale(SfModProject project, Func<List<string>> games, TextWriter stdout)
     {
         var made = project.ArchiveNames.ToList();
+        var old = new List<string>();
         foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name })
             foreach (var path in Common.FilesNamed(project.Dist, name))
-            {
                 // the archive this build makes is replaced by Archive2 at its exact name
-                if (made.Contains(name) && Path.GetFileName(path) == name) continue;
-                if (DeleteOld(path, stdout) is { } code) return code;
-                stdout.WriteLine($"deleted  {path} (from an earlier build; this build doesn't make it{(made.Contains(name) ? " by that spelling" : "")})");
-            }
+                if (!(made.Contains(name) && Path.GetFileName(path) == name)) old.Add(path);
+        if (old.Count == 0) return null;
+        if (Plugin.UnsafeDist(project, games()) is { } why)
+        {
+            stdout.WriteLine(DistRefused(project, why));
+            return ExitCodes.BadInput;
+        }
+        foreach (var path in old)
+        {
+            if (DeleteOld(path, stdout) is { } code) return code;
+            var name = Path.GetFileName(path);
+            var byThatSpelling = made.Any(m => string.Equals(m, name, StringComparison.OrdinalIgnoreCase));
+            stdout.WriteLine($"deleted  {path} (from an earlier build; this build doesn't make it{(byThatSpelling ? " by that spelling" : "")})");
+        }
         return null;
     }
 
-    /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
-    /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
-    /// folder is otherwise left as it is. The game's folders are looked up only when there is something to delete:
-    /// creations-out may not be, hold or be inside any install found or the --game folder, as on the full pack. A
-    /// game that isn't found doesn't stop this path (nothing here needs the game's tools); a --game folder that isn't
-    /// a game gets a WARNING. Null when done, else the exit code.</summary>
-    static int? DeleteStaleCreations(SfModProject project, string? gameOption, IHostEnv env, TextWriter stdout)
+    static string DistRefused(SfModProject project, string why) =>
+        $"RESULT: CANNOT PACK ({why}). Fix: in {project.File}, set \"dist\" to a folder of its own, for example \"dist\".";
+
+    /// <summary>The game folders the nothing-to-pack path protects: every install found (not only the first), plus
+    /// the --game folder. A game that isn't found doesn't stop this path (nothing here needs the game's tools); a
+    /// --game folder that isn't a game gets a WARNING.</summary>
+    static List<string> NothingToPackGames(SfModProject project, string? gameOption, IHostEnv env, TextWriter stdout)
     {
-        if (!project.Xbox || !Directory.Exists(project.CreationsOut)) return null;
-        var files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
-            .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
-        if (files.Count == 0) return null;
-        // every install found (not only the first), plus the --game folder: creations-out may be inside none of them
         var never = GameLocator.FindAll(env).Select(g => g.Folder).ToList();
         if (gameOption != null)
         {
             var given = GameLocator.FromOption(gameOption, out var gameError);
             if (given != null) never.Add(given.Folder);
-            else stdout.WriteLine($"WARNING  {gameError!.TrimEnd().TrimEnd('.')}. Checking creations-out against the installs found without it{(never.Count == 0 ? " (none)" : "")}.");
+            else stdout.WriteLine($"WARNING  {gameError!.TrimEnd().TrimEnd('.')}. Checking {(project.Xbox ? "dist and creations-out" : "dist")} against the installs found without it{(never.Count == 0 ? " (none)" : "")}.");
         }
-        if (never.Count == 0) Log.Write("creations-out: no game folder was found; checking without one");
-        else Log.Write($"creations-out: may not be, hold or be inside {string.Join(", ", never)}");
+        if (never.Count == 0) Log.Write("nothing to pack: no game folder was found; checking without one");
+        else Log.Write($"nothing to pack: dist and creations-out may not be, hold or be inside {string.Join(", ", never)}");
+        return never;
+    }
+
+    /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
+    /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
+    /// folder is otherwise left as it is. Only when there is something to delete, creations-out is checked: it may
+    /// not be, hold or be inside any of <paramref name="games"/>, as on the full pack. Null when done, else the exit
+    /// code.</summary>
+    static int? DeleteStaleCreations(SfModProject project, Func<List<string>> games, TextWriter stdout)
+    {
+        if (!project.Xbox || !Directory.Exists(project.CreationsOut)) return null;
+        var files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
+            .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
+        if (files.Count == 0) return null;
+        var never = games();
         string? why;
         try
         {

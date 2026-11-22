@@ -818,6 +818,78 @@ public class AssetsTests
     }
 
     [Fact]
+    public void FullPackChecksDistAgainstEveryInstall()
+    {
+        // the full pack without xbox, with dist a second install's Data folder holding an old archive by the mod's
+        // name: pack would delete it and write its own archives there, so it must refuse first
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var given = Fake.Game(t, "OtherGame");
+        var steamGame = SteamInstall(t, env);
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        t.File(Path.Combine(steamGame, "Scripts", "Source", "MYM", "Alpha.psc"), "ScriptName MYM:Alpha extends Quest\n");
+        t.File(Path.Combine(steamGame, ".build", "stage", "Scripts", "MYM", "Alpha.pex"), "made-up pex");
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"dist\": \"Data\""));
+        var installed = t.File(Path.Combine(steamGame, "Data", "MyMod - Textures.ba2"), "the installed archive");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", given);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("game's folder", output);
+        Assert.Contains("set \"dist\"", output);
+        Assert.True(File.Exists(installed));
+        Assert.Empty(env.Execs);
+    }
+
+    [Fact]
+    public void NothingToPackChecksDistAgainstEveryInstall()
+    {
+        // nothing to pack, no xbox, dist a second install's Data folder holding an old archive by the mod's name
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var given = Fake.Game(t, "OtherGame");
+        var steamGame = SteamInstall(t, env);
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"dist\": \"Data\","));
+        var installed = t.File(Path.Combine(steamGame, "Data", "MyMod - Main.ba2"), "the installed archive");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", given);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("game's folder", output);
+        Assert.True(File.Exists(installed));
+    }
+
+    [Fact]
+    public void NothingToPackWithNoOldArchiveDoesNotLookForTheGame()
+    {
+        // nothing to delete: no game lookup, no WARNING about a bad --game, exit 0 as before
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        t.File(Path.Combine("mod", "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine("mod", "sfmod.json"), NothingToPackJson);
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", Path.Combine(t.Path, "Stearn"));
+        Assert.True(code == ExitCodes.Ok, output);
+        Assert.DoesNotContain("WARNING", output);
+    }
+
+    [Fact]
+    public void CompileWithoutAGameFolderStillChecksTheInstallsFound()
+    {
+        // CompileAll called with no game in use: the stage folder (an install's Data folder) must still not be emptied
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var steamGame = SteamInstall(t, env);
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        t.File(Path.Combine(steamGame, "Scripts", "Source", "MYM", "Alpha.psc"), "ScriptName MYM:Alpha extends Quest\n");
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"stage\": \"Data\""));
+        var installed = t.File(Path.Combine(steamGame, "Data", "Starfield.esm"), "the game's own file");
+        var problems = Load(sfmod, out var p);
+        Assert.True(p != null, string.Join("\n", problems.Select(x => x.Format(sfmod))));
+        var sw = new StringWriter();
+        Assert.Equal(ExitCodes.BadInput, Compile.CompileAll(p!, Compile.ScriptList(p!), "compiler", "vanilla", env, sw));
+        Assert.Contains("game's folder", sw.ToString());
+        Assert.True(File.Exists(installed));
+        Assert.Empty(env.Execs);
+    }
+
+    [Fact]
     public void AnEmptyXboxTextureFolderIsFineWhenTheModHasNoTextures()
     {
         var json = WithXbox(Json.Replace("{ \"source\": \"Assets\" }", "{ \"source\": \"Assets\", \"xboxTextures\": \"AssetsXbox\" }"));

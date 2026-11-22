@@ -36,10 +36,12 @@ internal static class Common
     }
 
     /// <summary>The game folders no emptied folder may be, hold or be inside: the game in use plus every install
-    /// found (a mod can sit in a second install, for example Game Pass while --game names Steam).</summary>
-    public static List<string> GameFolders(string gameFolder, IHostEnv env)
+    /// found (a mod can sit in a second install, for example Game Pass while --game names Steam). With no game in
+    /// use (null), just the installs found.</summary>
+    public static List<string> GameFolders(string? gameFolder, IHostEnv env)
     {
-        var folders = new List<string> { gameFolder };
+        var folders = new List<string>();
+        if (gameFolder != null) folders.Add(gameFolder);
         foreach (var g in GameLocator.FindAll(env))
             if (!folders.Any(f => Same(Full(f), Full(g.Folder)))) folders.Add(g.Folder);
         Log.Write($"game folders protected: {string.Join(", ", folders)}");

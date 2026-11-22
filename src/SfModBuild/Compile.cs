@@ -159,7 +159,8 @@ internal static class Compile
     /// <summary>Empties the stage folder, then compiles each script in turn, stopping at the first failure.</summary>
     public static int CompileAll(SfModProject project, IReadOnlyList<ScriptToCompile> scripts, string compiler, string vanillaSource, IHostEnv env, TextWriter stdout, string? gameFolder = null)
     {
-        if (UnsafeStage(project, gameFolder == null ? null : Common.GameFolders(gameFolder, env)) is { } unsafeWhy)
+        // every install found, plus the game in use when one is given
+        if (UnsafeStage(project, Common.GameFolders(gameFolder, env)) is { } unsafeWhy)
         {
             stdout.WriteLine($"RESULT: CANNOT COMPILE ({unsafeWhy}). Fix: in {project.File}, set \"stage\" to a folder of its own, for example \".build/stage\".");
             return ExitCodes.BadInput;
