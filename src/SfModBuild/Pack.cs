@@ -83,8 +83,8 @@ internal static class Pack
     }
 
     /// <summary>Why emptying creations-out would be unsafe, or null.</summary>
-    public static string? UnsafeCreationsOut(SfModProject project, string gameFolder) =>
-        Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), new[] { gameFolder });
+    public static string? UnsafeCreationsOut(SfModProject project, IEnumerable<string> gameFolders) =>
+        Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), gameFolders);
 
     /// <summary>The folders no emptied folder may be or hold: the mod, the stage, dist, the builder, the script
     /// sources and the assets, plus any given.</summary>
@@ -109,7 +109,9 @@ internal static class Pack
 
     public static int PackAll(SfModProject project, string gameFolder, string archive2, IHostEnv env, TextWriter stdout)
     {
-        string? unsafeWhy = project.Xbox ? UnsafeCreationsOut(project, gameFolder) : null;
+        // every install found, not only the one in use: the mod may sit in a second install
+        var games = Common.GameFolders(gameFolder, env);
+        string? unsafeWhy = project.Xbox ? UnsafeCreationsOut(project, games) : null;
         if (unsafeWhy != null)
         {
             stdout.WriteLine($"RESULT: CANNOT PACK ({unsafeWhy}). Fix: in {project.File}, set \"creationsOut\" to a folder of its own, for example \"creations-out\".");
@@ -159,7 +161,7 @@ internal static class Pack
         if (staged)
         {
             var pack = PackFolder(project);
-            var why = Common.UnsafeToEmpty("pack", pack, project.Folder, Keep(project, project.CreationsOut), new[] { gameFolder })
+            var why = Common.UnsafeToEmpty("pack", pack, project.Folder, Keep(project, project.CreationsOut), games)
                       ?? Common.Empty(pack);
             if (why != null)
             {
@@ -361,10 +363,10 @@ internal static class Pack
         {
             var given = GameLocator.FromOption(gameOption, out var gameError);
             if (given != null) never.Add(given.Folder);
-            else stdout.WriteLine($"WARNING  {gameError} Checking creations-out against the installs found without it{(never.Count == 0 ? " (none)" : "")}.");
+            else stdout.WriteLine($"WARNING  {gameError!.TrimEnd().TrimEnd('.')}. Checking creations-out against the installs found without it{(never.Count == 0 ? " (none)" : "")}.");
         }
         if (never.Count == 0) Log.Write("creations-out: no game folder was found; checking without one");
-        else Log.Write($"creations-out: may not be inside {string.Join(", ", never)}");
+        else Log.Write($"creations-out: may not be, hold or be inside {string.Join(", ", never)}");
         string? why;
         try
         {

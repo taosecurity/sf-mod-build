@@ -83,11 +83,11 @@ internal static class Plugin
     }
 
     /// <summary>Why emptying dist would be unsafe, or null.</summary>
-    public static string? UnsafeDist(SfModProject project, string gameFolder)
+    public static string? UnsafeDist(SfModProject project, IEnumerable<string> gameFolders)
     {
         var keep = new List<string> { project.Folder, project.Stage, Path.GetDirectoryName(project.BuilderProject)! };
         if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
-        return Common.UnsafeToEmpty("dist", project.Dist, project.Folder, keep, new[] { gameFolder });
+        return Common.UnsafeToEmpty("dist", project.Dist, project.Folder, keep, gameFolders);
     }
 
     public static int BuildPlugin(SfModProject project, string gameFolder, string dotnet, IHostEnv env, TextWriter stdout)
@@ -98,7 +98,7 @@ internal static class Plugin
             stdout.WriteLine($"RESULT: CANNOT BUILD THE PLUGIN ({error})");
             return ExitCodes.BadInput;
         }
-        if (UnsafeDist(project, gameFolder) is { } why)
+        if (UnsafeDist(project, Common.GameFolders(gameFolder, env)) is { } why)
         {
             stdout.WriteLine($"RESULT: CANNOT BUILD THE PLUGIN ({why}). Fix: in {project.File}, set \"dist\" to a folder of its own, for example \"dist\".");
             return ExitCodes.BadInput;

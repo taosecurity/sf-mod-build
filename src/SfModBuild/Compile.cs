@@ -149,17 +149,17 @@ internal static class Compile
 
     /// <summary>Why emptying the stage folder would be unsafe (it is or holds the mod's folder, its sources or its
     /// builder, or is a drive root), or null when it is safe.</summary>
-    public static string? UnsafeStage(SfModProject project, string? gameFolder = null)
+    public static string? UnsafeStage(SfModProject project, IEnumerable<string>? gameFolders = null)
     {
         var keep = new List<string> { project.Folder, project.Dist, project.CreationsOut, Path.GetDirectoryName(project.BuilderProject)! };
         if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
-        return Common.UnsafeToEmpty("stage", project.Stage, project.Folder, keep, gameFolder == null ? null : new[] { gameFolder });
+        return Common.UnsafeToEmpty("stage", project.Stage, project.Folder, keep, gameFolders);
     }
 
     /// <summary>Empties the stage folder, then compiles each script in turn, stopping at the first failure.</summary>
     public static int CompileAll(SfModProject project, IReadOnlyList<ScriptToCompile> scripts, string compiler, string vanillaSource, IHostEnv env, TextWriter stdout, string? gameFolder = null)
     {
-        if (UnsafeStage(project, gameFolder) is { } unsafeWhy)
+        if (UnsafeStage(project, gameFolder == null ? null : Common.GameFolders(gameFolder, env)) is { } unsafeWhy)
         {
             stdout.WriteLine($"RESULT: CANNOT COMPILE ({unsafeWhy}). Fix: in {project.File}, set \"stage\" to a folder of its own, for example \".build/stage\".");
             return ExitCodes.BadInput;

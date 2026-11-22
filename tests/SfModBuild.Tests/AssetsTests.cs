@@ -740,11 +740,8 @@ public class AssetsTests
         // that auto-detection finds through Steam: that installed archive must not be deleted either
         using var t = new TempDir();
         var env = Fake.EnvWithPath(t, "dotnet");
-        if (!env.IsWindows) return;   // the fake Steam install below uses the Windows registry
         var given = Fake.Game(t, "OtherGame");
-        var steam = t.Dir("Steam");
-        var steamGame = Fake.Game(t, Path.Combine("Steam", "steamapps", "common", "Starfield"));
-        env.Registry[(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")] = steam.Replace('\\', '/');
+        var steamGame = SteamInstall(t, env);
         t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
         var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"xbox\": true, \"creationsOut\": \"Data\","));
         var installed = t.File(Path.Combine(steamGame, "Data", "MyMod - Main.ba2"), "the installed archive");
@@ -759,10 +756,7 @@ public class AssetsTests
     {
         using var t = new TempDir();
         var env = Fake.EnvWithPath(t, "dotnet");
-        if (!env.IsWindows) return;
-        var steam = t.Dir("Steam");
-        var steamGame = Fake.Game(t, Path.Combine("Steam", "steamapps", "common", "Starfield"));
-        env.Registry[(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")] = steam.Replace('\\', '/');
+        var steamGame = SteamInstall(t, env);
         t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
         var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"xbox\": true, \"creationsOut\": \"Data\","));
         var installed = t.File(Path.Combine(steamGame, "Data", "MyMod - Main.ba2"), "the installed archive");
@@ -770,6 +764,57 @@ public class AssetsTests
         Assert.True(code == ExitCodes.BadInput, output);
         Assert.Contains("WARNING  --game", output);
         Assert.True(File.Exists(installed));
+    }
+
+    /// <summary>A fake Steam install that auto-detection finds: through the registry on Windows, through
+    /// ~/.steam/steam elsewhere. Returns its Starfield folder.</summary>
+    static string SteamInstall(TempDir t, FakeHostEnv env)
+    {
+        var steam = t.Dir(Path.Combine("home", ".steam", "steam"));
+        if (env.IsWindows) env.Registry[(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")] = steam.Replace('\\', '/');
+        else env.Vars["HOME"] = Path.Combine(t.Path, "home");
+        return Fake.Game(t, Path.Combine("home", ".steam", "steam", "steamapps", "common", "Starfield"));
+    }
+
+    [Fact]
+    public void FullPackChecksEveryInstallNotOnlyTheGivenOne()
+    {
+        // the full pack (scripts staged, xbox on) with --game naming one install, while the mod and its
+        // creations-out (that install's Data folder) sit in a second one: nothing there may be emptied
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var given = Fake.Game(t, "OtherGame");
+        var steamGame = SteamInstall(t, env);
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        t.File(Path.Combine(steamGame, "Scripts", "Source", "MYM", "Alpha.psc"), "ScriptName MYM:Alpha extends Quest\n");
+        t.File(Path.Combine(steamGame, ".build", "stage", "Scripts", "MYM", "Alpha.pex"), "made-up pex");
+        var json = WithXbox(Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"creationsOut\": \"Data\""));
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), json);
+        var installed = t.File(Path.Combine(steamGame, "Data", "Starfield.esm"), "the game's own file");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", given);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("game's folder", output);
+        Assert.True(File.Exists(installed));
+        Assert.Empty(env.Execs);
+    }
+
+    [Fact]
+    public void PluginChecksDistAgainstEveryInstall()
+    {
+        // dist is a second install's Data folder while --game names another install: dist must not be emptied
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        var given = Fake.Game(t, "OtherGame");
+        var steamGame = SteamInstall(t, env);
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"dist\": \"Data\","));
+        var installed = t.File(Path.Combine(steamGame, "Data", "Starfield.esm"), "the game's own file");
+        t.Dir(Path.Combine("OtherGame", "Data"));
+        var code = RunApp(env, out var output, "plugin", sfmod, "--game", given);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("game's folder", output);
+        Assert.True(File.Exists(installed));
+        Assert.Empty(env.Execs);
     }
 
     [Fact]

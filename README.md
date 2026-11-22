@@ -401,7 +401,8 @@ A real run with a StarfieldCustom.ini that turns on only `bEnableLogging` (folde
 - **Vortex and Mod Organizer 2**: the zip has the plugin and BA2 at its top level, which both install as is. The
   builder reads the game's real `Data` folder (`{data}`), not a mod manager's virtual one, so it sees only the base
   game and the official plugins there. sf-mod-build never writes into the game folder: it refuses a dist or
-  creations-out folder inside the game's folder, and it never packs an assets folder that is in the game's folder.
+  creations-out folder inside the game's folder (every Starfield install it finds, not only the one it builds
+  against), and it never packs an assets folder that is in the game's folder.
 
 ## Linux
 

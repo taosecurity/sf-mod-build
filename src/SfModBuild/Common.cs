@@ -35,6 +35,17 @@ internal static class Common
         return game;
     }
 
+    /// <summary>The game folders no emptied folder may be, hold or be inside: the game in use plus every install
+    /// found (a mod can sit in a second install, for example Game Pass while --game names Steam).</summary>
+    public static List<string> GameFolders(string gameFolder, IHostEnv env)
+    {
+        var folders = new List<string> { gameFolder };
+        foreach (var g in GameLocator.FindAll(env))
+            if (!folders.Any(f => Same(Full(f), Full(g.Folder)))) folders.Add(g.Folder);
+        Log.Write($"game folders protected: {string.Join(", ", folders)}");
+        return folders;
+    }
+
     static string Full(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
     // Paths compare without case everywhere: the cautious choice for "never empty this" checks, since macOS, WSL's
