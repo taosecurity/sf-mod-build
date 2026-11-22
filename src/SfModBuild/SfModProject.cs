@@ -614,6 +614,7 @@ internal sealed class SfModProject
                     else if (projects.Length == 0) Error("builder.project", $"{full} holds no .csproj file.", "point it at the folder of your Mutagen builder project (the one with the .csproj).");
                     else Error("builder.project", $"{full} holds {projects.Length} .csproj files.", $"name the one to run, for example \"{value.TrimEnd('/', '\\')}/{Path.GetFileName(projects[0])}\".");
                 }
+                else if (NamesFolder(value) && System.IO.File.Exists(full)) Error("builder.project", $"\"{value}\" ends in a slash, so it names a folder, not the .csproj.", "give the .csproj without the slash, or the builder's folder.");
                 else Error("builder.project", $"{full} isn't there (or isn't a .csproj file).", "give the builder's folder or its .csproj, relative to sfmod.json.");
             }
             List<string>? args = null;
@@ -738,7 +739,7 @@ internal sealed class SfModProject
             string? checker = null;
             if (String(c, "checker", false, "\"tools/sf-mod-check.exe\"", "check.checker") is { } value && PathOf(value, "check.checker") is { } full)
             {
-                if (NamesFolder(value) || !System.IO.File.Exists(full)) Error("check.checker", NamesFolder(value) ? $"\"{value}\" ends in a slash, so it names a folder, not the checker program." : $"{full} isn't there.", "give the checker program's path, or leave check.checker out to find sf-mod-check (or sfmodcheck) on PATH.");
+                if (NamesFolder(value) || !System.IO.File.Exists(full)) Error("check.checker", NamesFolder(value) ? $"\"{value}\" ends in a slash, so it names a folder, not the checker program." : Directory.Exists(full) ? $"{full} is a folder, not the checker program." : $"{full} isn't there.", "give the checker program's path, or leave check.checker out to find sf-mod-check (or sfmodcheck) on PATH.");
                 else checker = full;
                 if (Path.IsPathRooted(value))
                     Warn("check.checker", "it is a full path, which other people building your mod won't have.", "leave it out (the checker is found on PATH) or give it on the command line with --checker.");

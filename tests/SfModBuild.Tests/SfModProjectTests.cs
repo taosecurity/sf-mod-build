@@ -82,7 +82,17 @@ public class SfModProjectTests
         Assert.Null(p);
         Assert.Contains(problems, x => x.Field == "zip.files[\"LICENSE/\"]" && x.Problem.Contains("ends in a slash"));
         Assert.Contains(problems, x => x.Field == "check.checker" && x.Problem.Contains("ends in a slash"));
-        Assert.Contains(problems, x => x.Field == "builder.project");
+        Assert.Contains(problems, x => x.Field == "builder.project" && x.Problem.Contains("ends in a slash"));
+    }
+
+    [Fact]
+    public void CheckerThatIsAFolderSaysSo()
+    {
+        using var t = Mod();
+        t.File(Path.Combine("tools", "sf-mod-check.exe"));
+        var (p, problems) = Load(t, Good.Replace("\"zip\":", "\"check\": { \"checker\": \"tools\" }, \"zip\":"));
+        Assert.Null(p);
+        Assert.Contains(problems, x => x.Field == "check.checker" && x.Problem.Contains("is a folder"));
     }
 
     [Fact]
