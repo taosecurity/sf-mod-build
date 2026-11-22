@@ -442,9 +442,10 @@ internal static class Pack
 
     /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
     /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
-    /// folder is otherwise left as it is. Only when there is something to delete, creations-out is checked: it may
-    /// not be, hold or be inside any of <paramref name="games"/>, as on the full pack. As with dist, creations-out
-    /// itself may never be a link here (this path deletes in it rather than emptying it), checked before it is read.
+    /// folder is otherwise left as it is. First, always and before it is read, creations-out itself may never be a
+    /// link here, as with dist (this path deletes in it rather than emptying it). Then, only when there is something
+    /// to delete, it is checked against the games: it may not be, hold or be inside any of
+    /// <paramref name="games"/>, as on the full pack.
     /// Null when done, else the exit code.</summary>
     static int? DeleteStaleCreations(SfModProject project, Func<List<string>> games, TextWriter stdout)
     {

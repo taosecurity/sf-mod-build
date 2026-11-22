@@ -606,7 +606,7 @@ internal sealed class SfModProject
             var value = String(b, "project", required: true, example: "\"Builder\"", field: "builder.project");
             if (value != null && PathOf(value, "builder.project") is { } full)
             {
-                if (System.IO.File.Exists(full) && full.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) project = full;
+                if (!NamesFolder(value) && System.IO.File.Exists(full) && full.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) project = full;
                 else if (Directory.Exists(full))
                 {
                     var projects = Directory.GetFiles(full, "*.csproj");
@@ -701,9 +701,11 @@ internal sealed class SfModProject
                         continue;
                     }
                     var source = PathOf(e.Name, field);
-                    if (source != null && !System.IO.File.Exists(source))
+                    if (source != null && (NamesFolder(e.Name) || !System.IO.File.Exists(source)))
                     {
-                        Error(field, Directory.Exists(source) ? $"{source} is a folder; zip.files takes files." : $"{source} isn't there.", "give a file, relative to sfmod.json.");
+                        Error(field, Directory.Exists(source) ? $"{source} is a folder; zip.files takes files."
+                            : NamesFolder(e.Name) ? $"\"{e.Name}\" ends in a slash, so it names a folder; zip.files takes files."
+                            : $"{source} isn't there.", "give a file, relative to sfmod.json.");
                         source = null;
                     }
                     if (!Placeholders(target, field, ZipPlaceholders)) continue;
@@ -736,7 +738,7 @@ internal sealed class SfModProject
             string? checker = null;
             if (String(c, "checker", false, "\"tools/sf-mod-check.exe\"", "check.checker") is { } value && PathOf(value, "check.checker") is { } full)
             {
-                if (!System.IO.File.Exists(full)) Error("check.checker", $"{full} isn't there.", "give the checker program's path, or leave check.checker out to find sf-mod-check (or sfmodcheck) on PATH.");
+                if (NamesFolder(value) || !System.IO.File.Exists(full)) Error("check.checker", NamesFolder(value) ? $"\"{value}\" ends in a slash, so it names a folder, not the checker program." : $"{full} isn't there.", "give the checker program's path, or leave check.checker out to find sf-mod-check (or sfmodcheck) on PATH.");
                 else checker = full;
                 if (Path.IsPathRooted(value))
                     Warn("check.checker", "it is a full path, which other people building your mod won't have.", "leave it out (the checker is found on PATH) or give it on the command line with --checker.");
@@ -843,6 +845,10 @@ internal sealed class SfModProject
                 return null;
             }
         }
+
+        /// <summary>True when the value ends in / or \, so it names a folder: PathOf drops that separator, so a field that
+        /// takes a file checks it here, and "LICENSE/" stays an error as it was before the drop.</summary>
+        static bool NamesFolder(string value) => value.EndsWith('/') || value.EndsWith('\\');
 
         /// <summary>True when every {placeholder} in the text is one of the allowed ones.</summary>
         bool Placeholders(string text, string field, string[] allowed)

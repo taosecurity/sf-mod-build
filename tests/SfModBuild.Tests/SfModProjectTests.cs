@@ -70,6 +70,22 @@ public class SfModProjectTests
     }
 
     [Fact]
+    public void FileFieldsEndingInASeparatorStayErrors()
+    {
+        // the dropped separator is for folders; a field that takes a file still refuses "LICENSE/"
+        using var t = Mod();
+        t.File(Path.Combine("tools", "sf-mod-check.exe"));
+        var (p, problems) = Load(t, Good
+            .Replace("\"LICENSE\": \"LICENSE-{name}.txt\"", "\"LICENSE/\": \"LICENSE-{name}.txt\"")
+            .Replace("\"project\": \"Builder\"", "\"project\": \"Builder/Builder.csproj/\"")
+            .Replace("\"zip\":", "\"check\": { \"checker\": \"tools/sf-mod-check.exe/\" }, \"zip\":"));
+        Assert.Null(p);
+        Assert.Contains(problems, x => x.Field == "zip.files[\"LICENSE/\"]" && x.Problem.Contains("ends in a slash"));
+        Assert.Contains(problems, x => x.Field == "check.checker" && x.Problem.Contains("ends in a slash"));
+        Assert.Contains(problems, x => x.Field == "builder.project");
+    }
+
+    [Fact]
     public void FolderArgumentFindsSfmodJson()
     {
         using var t = Mod();
