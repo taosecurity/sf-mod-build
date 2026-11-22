@@ -402,7 +402,8 @@ A real run with a StarfieldCustom.ini that turns on only `bEnableLogging` (folde
   builder reads the game's real `Data` folder (`{data}`), not a mod manager's virtual one, so it sees only the base
   game and the official plugins there. sf-mod-build never writes into the game folder: it refuses a dist or
   creations-out folder inside the game's folder (every Starfield install it finds, not only the one it builds
-  against), and it never packs an assets folder that is in the folder of the game it builds against.
+  against). `pack` also refuses a dist folder that is a link or junction, and it never packs an assets folder
+  that is in the folder of the game it builds against.
 
 ## Linux
 

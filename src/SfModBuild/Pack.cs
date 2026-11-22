@@ -121,7 +121,7 @@ internal static class Pack
             return ExitCodes.BadInput;
         }
         // dist gets the new archives and loses the old ones: it may not be or be inside any install either
-        if (Plugin.UnsafeDist(project, games) is { } distWhy)
+        if (UnsafePackDist(project, games) is { } distWhy)
         {
             stdout.WriteLine(DistRefused(project, distWhy));
             return ExitCodes.BadInput;
@@ -340,17 +340,30 @@ internal static class Pack
     /// <summary>Deletes from dist each of the mod's archives this build doesn't make any more (the mod's textures or
     /// scripts were removed), and any copy of an archive it does make spelled in other letter case (a case-sensitive
     /// disk can hold both), so neither can reach the zip. Before deleting anything, dist may not be or be inside any
-    /// of <paramref name="games"/> (asked for only then). Null when done, else the exit code to return.</summary>
+    /// of <paramref name="games"/> (asked for only then); dist itself may never be a link, checked before it is
+    /// read. Null when done, else the exit code to return.</summary>
     static int? DeleteStale(SfModProject project, Func<List<string>> games, TextWriter stdout)
     {
         var made = project.ArchiveNames.ToList();
         var old = new List<string>();
-        foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name })
-            foreach (var path in Common.FilesNamed(project.Dist, name))
-                // the archive this build makes is replaced by Archive2 at its exact name
-                if (!(made.Contains(name) && Path.GetFileName(path) == name)) old.Add(path);
-        if (old.Count == 0) return null;
-        if (Plugin.UnsafeDist(project, games()) is { } why)
+        string? why = DistLink(project);
+        if (why == null)
+        {
+            try
+            {
+                foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name })
+                    foreach (var path in Common.FilesNamed(project.Dist, name))
+                        // the archive this build makes is replaced by Archive2 at its exact name
+                        if (!(made.Contains(name) && Path.GetFileName(path) == name)) old.Add(path);
+                if (old.Count == 0) return null;
+                why = Plugin.UnsafeDist(project, games());
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                why = $"the dist folder {project.Dist} can't be checked ({e.Message})";
+            }
+        }
+        if (why != null)
         {
             stdout.WriteLine(DistRefused(project, why));
             return ExitCodes.BadInput;
@@ -363,6 +376,34 @@ internal static class Pack
             stdout.WriteLine($"deleted  {path} (from an earlier build; this build doesn't make it{(byThatSpelling ? " by that spelling" : "")})");
         }
         return null;
+    }
+
+    /// <summary>Why pack may not delete or write archives in dist, or null: the plugin step's dist check against
+    /// <paramref name="games"/>, then <see cref="DistLink"/>.</summary>
+    static string? UnsafePackDist(SfModProject project, List<string> games)
+    {
+        try { return Plugin.UnsafeDist(project, games) ?? DistLink(project); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"the dist folder {project.Dist} can't be checked ({e.Message})";
+        }
+    }
+
+    /// <summary>Why dist itself is a link or junction (or can't be checked), or null. pack doesn't empty dist (which
+    /// would remove only the link): it deletes and writes files in it, so through a link they would land wherever it
+    /// points, a game's Data folder included.</summary>
+    static string? DistLink(SfModProject project)
+    {
+        try
+        {
+            return new DirectoryInfo(project.Dist).LinkTarget is { } to
+                ? $"the dist folder {project.Dist} is a link or junction to {to}, so pack would delete and write archives wherever it points"
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"the dist folder {project.Dist} can't be checked ({e.Message})";
+        }
     }
 
     static string DistRefused(SfModProject project, string why) =>

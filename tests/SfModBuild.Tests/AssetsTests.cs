@@ -864,9 +864,88 @@ public class AssetsTests
         var env = Fake.EnvWithPath(t, "dotnet");
         t.File(Path.Combine("mod", "Builder", "Builder.csproj"), "<Project />");
         var sfmod = t.File(Path.Combine("mod", "sfmod.json"), NothingToPackJson);
-        var code = RunApp(env, out var output, "pack", sfmod, "--game", Path.Combine(t.Path, "Stearn"));
+        var log = Path.Combine(t.Path, "log.txt");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", Path.Combine(t.Path, "Stearn"), "--log", log);
         Assert.True(code == ExitCodes.Ok, output);
         Assert.DoesNotContain("WARNING", output);
+        var text = File.ReadAllText(log);
+        Assert.DoesNotContain("nothing to pack:", text);
+        Assert.DoesNotContain("game folders protected", text);
+    }
+
+    /// <summary>Makes <paramref name="link"/> a symlink to <paramref name="target"/>, or a junction on Windows
+    /// without admin or Developer Mode.</summary>
+    static void Link(string link, string target)
+    {
+        try { Directory.CreateSymbolicLink(link, target); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            if (!OperatingSystem.IsWindows()) throw;
+            var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"") { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true })!;
+            mk.WaitForExit();
+            Assert.True(Directory.Exists(link), "mklink /J failed");
+        }
+    }
+
+    [Fact]
+    public void FullPackRefusesADistThatIsALink()
+    {
+        // dist is a link to a folder outside the mod (a game's Data folder, say): pack would delete the old archive
+        // there and write its own through the link, so it must refuse before either
+        var (t, sfmod, game, env) = Setup(Json);
+        using (t)
+        {
+            CompiledScripts(t);
+            var outside = t.Dir("outside");
+            var plugin = t.File(Path.Combine("outside", "MyMod.esm"), "made-up plugin");
+            var installed = t.File(Path.Combine("outside", "MyMod - Main.ba2"), "the installed archive");
+            Link(Mod(t, "dist"), outside);
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("is a link or junction to", output);
+            Assert.Contains("set \"dist\"", output);
+            Assert.Empty(env.Execs);
+            Assert.True(File.Exists(installed));
+            Assert.True(File.Exists(plugin));
+        }
+    }
+
+    [Fact]
+    public void NothingToPackRefusesADistThatIsALink()
+    {
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        t.File(Path.Combine("mod", "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine("mod", "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", ""));
+        var outside = t.Dir("outside");
+        var installed = t.File(Path.Combine("outside", "MyMod - Main.ba2"), "the installed archive");
+        Link(Mod(t, "dist"), outside);
+        var code = RunApp(env, out var output, "pack", sfmod);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.True(output.Contains("is a link or junction to"), output);
+        Assert.True(File.Exists(installed));
+    }
+
+    [Fact]
+    public void FullPackEmptiesACreationsOutLinkWithoutTouchingItsTarget()
+    {
+        // the full pack empties creations-out; when it is a link, only the link goes and a real folder takes its place
+        var (t, sfmod, game, env) = Setup(WithXbox(Json));
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            var outside = t.Dir("outside");
+            var keep = t.File(Path.Combine("outside", "MyMod - Main_xbox.ba2"), "someone else's file");
+            var creations = Mod(t, "creations-out");
+            Link(creations, outside);
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("someone else's file", File.ReadAllText(keep));
+            Assert.Single(Directory.GetFiles(outside));
+            Assert.Null(new DirectoryInfo(creations).LinkTarget);
+            Assert.True(File.Exists(Path.Combine(creations, "MyMod - Main_xbox.ba2")));
+        }
     }
 
     [Fact]
