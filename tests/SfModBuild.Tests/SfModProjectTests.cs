@@ -56,6 +56,20 @@ public class SfModProjectTests
     }
 
     [Fact]
+    public void FolderPathsDropATrailingSeparator()
+    {
+        // "dist/" and "dist" must be one path to every check: on Linux a link spelled "dist/" is followed by lstat,
+        // readlink and a recursive delete, so the separator is dropped once, where the path is read
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace("\"version\": \"0.1.0\",",
+            "\"version\": \"0.1.0\", \"xbox\": true, \"dist\": \"dist/\", \"stage\": \"stage\\\\\", \"creationsOut\": \"creations-out/\","));
+        Assert.True(p != null, All(problems));
+        Assert.Equal(Path.Combine(t.Path, "dist"), p!.Dist);
+        Assert.Equal(Path.Combine(t.Path, "stage"), p.Stage);
+        Assert.Equal(Path.Combine(t.Path, "creations-out"), p.CreationsOut);
+    }
+
+    [Fact]
     public void FolderArgumentFindsSfmodJson()
     {
         using var t = Mod();

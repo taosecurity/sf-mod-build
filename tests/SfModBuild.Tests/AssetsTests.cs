@@ -892,9 +892,11 @@ public class AssetsTests
     {
         var mk = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c " + line)
             { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true })!;
-        var said = mk.StandardOutput.ReadToEnd() + mk.StandardError.ReadToEnd();
+        // both streams are read at once, so a long message on one can't block the other
+        var output = mk.StandardOutput.ReadToEndAsync();
+        var errors = mk.StandardError.ReadToEndAsync();
         mk.WaitForExit();
-        return (mk.ExitCode, said);
+        return (mk.ExitCode, output.Result + errors.Result);
     }
 
     /// <summary>Makes <paramref name="link"/> a hard link to the file <paramref name="target"/>; false where this
@@ -910,8 +912,9 @@ public class AssetsTests
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return false;
         var ln = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ln", $"\"{target}\" \"{link}\"")
             { UseShellExecute = false, RedirectStandardError = true })!;
+        var errors = ln.StandardError.ReadToEndAsync();
         ln.WaitForExit();
-        Assert.True(ln.ExitCode == 0, "ln failed: " + ln.StandardError.ReadToEnd());
+        Assert.True(ln.ExitCode == 0, "ln failed: " + errors.Result);
         return true;
     }
 
@@ -1033,6 +1036,44 @@ public class AssetsTests
             Assert.Null(new DirectoryInfo(creations).LinkTarget);
             Assert.True(File.Exists(Path.Combine(creations, "MyMod - Main_xbox.ba2")));
         }
+    }
+
+    [Fact]
+    public void FullPackEmptiesACreationsOutLinkSpelledWithATrailingSlashWithoutTouchingItsTarget()
+    {
+        // "creations-out/": on Linux a recursive delete of a link spelled with the separator follows it, so the path
+        // is trimmed where sfmod.json is read and only the link goes
+        var (t, sfmod, game, env) = Setup(WithXbox(Json).Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"creationsOut\": \"creations-out/\","));
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            var outside = t.Dir("outside");
+            var keep = t.File(Path.Combine("outside", "MyMod - Main_xbox.ba2"), "someone else's file");
+            var creations = Mod(t, "creations-out");
+            Link(creations, outside);
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("someone else's file", File.ReadAllText(keep));
+            Assert.Single(Directory.GetFiles(outside));
+            Assert.Null(new DirectoryInfo(creations).LinkTarget);
+        }
+    }
+
+    [Fact]
+    public void NothingToPackRefusesACreationsOutLinkSpelledWithATrailingSlash()
+    {
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        t.File(Path.Combine("mod", "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine("mod", "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"xbox\": true, \"creationsOut\": \"creations-out/\","));
+        var outside = t.Dir("outside");
+        var installed = t.File(Path.Combine("outside", "MyMod - Main_xbox.ba2"), "the installed archive");
+        Link(Mod(t, "creations-out"), outside);
+        var code = RunApp(env, out var output, "pack", sfmod);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.True(output.Contains("is a link or junction to"), output);
+        Assert.Equal("the installed archive", File.ReadAllText(installed));
     }
 
     [Fact]

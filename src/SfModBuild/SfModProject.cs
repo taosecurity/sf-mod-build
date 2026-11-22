@@ -834,7 +834,9 @@ internal sealed class SfModProject
                 return null;
             }
             var native = value.Replace('\\', '/').Replace('/', Path.DirectorySeparatorChar);
-            try { return Path.GetFullPath(Path.Combine(folder, native)); }
+            // a trailing separator is dropped (a drive or file-system root keeps its own), so "dist/" and "dist" are one
+            // path to every check: on Linux, a link spelled "dist/" is followed by lstat, readlink and recursive delete
+            try { return Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(folder, native))); }
             catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
             {
                 Error(field, $"\"{value}\" isn't a usable path ({e.Message}).", "give one plain path, relative to sfmod.json.");

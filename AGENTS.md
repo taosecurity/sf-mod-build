@@ -143,7 +143,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - Never compiles with `-release` and has no option for it (it strips every `Debug.Trace`).
 - Never writes into the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist folder
-  that is a link or junction, and never empties a folder
+  that is a link or junction (with nothing to pack, a creations-out folder too), and never empties a folder
   that is or holds the mod folder, a source folder, the builder or a drive root.
 - Never uploads anything, never changes the game's files, never edits the person's load order or mod manager.
 - Never packs an assets folder that is in the game's folder or holds it, the mod's own folder, dist, stage,

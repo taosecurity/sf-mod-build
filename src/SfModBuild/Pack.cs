@@ -443,24 +443,37 @@ internal static class Pack
     /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
     /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
     /// folder is otherwise left as it is. Only when there is something to delete, creations-out is checked: it may
-    /// not be, hold or be inside any of <paramref name="games"/>, as on the full pack. Null when done, else the exit
-    /// code.</summary>
+    /// not be, hold or be inside any of <paramref name="games"/>, as on the full pack. As with dist, creations-out
+    /// itself may never be a link here (this path deletes in it rather than emptying it), checked before it is read.
+    /// Null when done, else the exit code.</summary>
     static int? DeleteStaleCreations(SfModProject project, Func<List<string>> games, TextWriter stdout)
     {
         if (!project.Xbox || !Directory.Exists(project.CreationsOut)) return null;
-        var files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
-            .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
-        if (files.Count == 0) return null;
-        var never = games();
+        var files = new List<string>();
         string? why;
         try
         {
-            why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), never.Count == 0 ? null : never)
-                  ?? (FolderLink(project.CreationsOut) is { } to ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}" : null);
+            why = FolderLink(project.CreationsOut) is { } to
+                ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}, so pack would delete archives wherever it points"
+                : null;
+            if (why == null)
+                files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
+                    .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             why = $"the creations-out folder {project.CreationsOut} can't be checked ({e.Message})";
+        }
+        if (why == null && files.Count == 0) return null;
+        if (why == null)
+        {
+            // the game lookup stays outside this catch, so its errors aren't blamed on creations-out
+            var never = games();
+            try { why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), never.Count == 0 ? null : never); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                why = $"the creations-out folder {project.CreationsOut} can't be checked ({e.Message})";
+            }
         }
         if (why != null)
         {
