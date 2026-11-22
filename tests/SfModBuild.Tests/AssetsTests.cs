@@ -729,7 +729,47 @@ public class AssetsTests
         var code = RunApp(env, out var output, "pack", sfmod, "--game", Path.Combine(t.Path, "no-such-game"));
         Assert.True(code == ExitCodes.Ok, output);
         Assert.Contains("nothing to pack", output);
+        Assert.Contains("WARNING  --game", output);
         Assert.False(File.Exists(old));
+    }
+
+    [Fact]
+    public void NothingToPackChecksEveryInstallNotOnlyTheGivenOne()
+    {
+        // --game names one install, but the mod (and its creations-out, the game's Data folder) sits in another one
+        // that auto-detection finds through Steam: that installed archive must not be deleted either
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        if (!env.IsWindows) return;   // the fake Steam install below uses the Windows registry
+        var given = Fake.Game(t, "OtherGame");
+        var steam = t.Dir("Steam");
+        var steamGame = Fake.Game(t, Path.Combine("Steam", "steamapps", "common", "Starfield"));
+        env.Registry[(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")] = steam.Replace('\\', '/');
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"xbox\": true, \"creationsOut\": \"Data\","));
+        var installed = t.File(Path.Combine(steamGame, "Data", "MyMod - Main.ba2"), "the installed archive");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", given);
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("game's folder", output);
+        Assert.True(File.Exists(installed));
+    }
+
+    [Fact]
+    public void NothingToPackWithABadGameOptionStillChecksTheInstallsFound()
+    {
+        using var t = new TempDir();
+        var env = Fake.EnvWithPath(t, "dotnet");
+        if (!env.IsWindows) return;
+        var steam = t.Dir("Steam");
+        var steamGame = Fake.Game(t, Path.Combine("Steam", "steamapps", "common", "Starfield"));
+        env.Registry[(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")] = steam.Replace('\\', '/');
+        t.File(Path.Combine(steamGame, "Builder", "Builder.csproj"), "<Project />");
+        var sfmod = t.File(Path.Combine(steamGame, "sfmod.json"), NothingToPackJson.Replace("\"xbox\": true,", "\"xbox\": true, \"creationsOut\": \"Data\","));
+        var installed = t.File(Path.Combine(steamGame, "Data", "MyMod - Main.ba2"), "the installed archive");
+        var code = RunApp(env, out var output, "pack", sfmod, "--game", Path.Combine(t.Path, "Stearn"));
+        Assert.True(code == ExitCodes.BadInput, output);
+        Assert.Contains("WARNING  --game", output);
+        Assert.True(File.Exists(installed));
     }
 
     [Fact]

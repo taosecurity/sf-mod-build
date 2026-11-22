@@ -11,7 +11,8 @@
 
 - The release's `SHA256SUMS` file now has LF line endings. From 0.1.1 to 0.2.0 it had Windows line endings, so `sha256sum -c SHA256SUMS` on Linux or in Git Bash reported every file as missing. The release workflow now runs `sha256sum -c SHA256SUMS` itself before it makes the release.
 - `doctor` reads INI comments more carefully. A `;` or `#` inside double quotes is part of the value, and a quote that is never closed doesn't count as one. Before, a closed quote followed by an unclosed one (`"a;b" "c`) cut the value at the `;` inside the closed quote.
-- `pack` with `xbox` on and nothing to pack now also refuses a creations-out folder that is, holds or is inside the game's folder before it deletes the mod's old archives there, as a full `pack` already did. When the game isn't found, this path still works without it.
+- `pack` with `xbox` on and nothing to pack now also refuses a creations-out folder that is, holds or is inside the game's folder before it deletes the mod's old archives there, as a full `pack` already did. It checks every Starfield install it finds, plus the `--game` folder; a `--game` folder that isn't a game gets a `WARNING`, and the installs found without it are still checked. When no game is found, this path still works without one.
+- The release workflow stops with a clear message when it has no files to checksum, instead of failing later in `sha256sum -c`.
 
 ### Example
 

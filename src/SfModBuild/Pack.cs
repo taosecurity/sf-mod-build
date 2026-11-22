@@ -345,21 +345,30 @@ internal static class Pack
 
     /// <summary>With "xbox" on and nothing to pack: deletes the mod's own old archives (the _xbox ones and the PC
     /// copies) from creations-out, so an upload of that folder can't carry them. Only those names are touched; the
-    /// folder is otherwise left as it is. The game's folder is looked up only when there is something to delete, and
-    /// a game that isn't found doesn't stop this path (nothing here needs the game's tools); when it is found,
-    /// creations-out may not be, hold or be inside it, as on the full pack. Null when done, else the exit code.</summary>
+    /// folder is otherwise left as it is. The game's folders are looked up only when there is something to delete:
+    /// creations-out may not be, hold or be inside any install found or the --game folder, as on the full pack. A
+    /// game that isn't found doesn't stop this path (nothing here needs the game's tools); a --game folder that isn't
+    /// a game gets a WARNING. Null when done, else the exit code.</summary>
     static int? DeleteStaleCreations(SfModProject project, string? gameOption, IHostEnv env, TextWriter stdout)
     {
         if (!project.Xbox || !Directory.Exists(project.CreationsOut)) return null;
         var files = new[] { project.XboxBa2Name, project.XboxTexturesBa2Name, project.Ba2Name, project.TexturesBa2Name }
             .SelectMany(n => Common.FilesNamed(project.CreationsOut, n)).ToList();
         if (files.Count == 0) return null;
-        var game = Common.FindGame(gameOption, env, out var gameError);
-        if (game == null) Log.Write($"creations-out: the game's folder wasn't found ({gameError}); checking without it");
+        // every install found (not only the first), plus the --game folder: creations-out may be inside none of them
+        var never = GameLocator.FindAll(env).Select(g => g.Folder).ToList();
+        if (gameOption != null)
+        {
+            var given = GameLocator.FromOption(gameOption, out var gameError);
+            if (given != null) never.Add(given.Folder);
+            else stdout.WriteLine($"WARNING  {gameError} Checking creations-out against the installs found without it{(never.Count == 0 ? " (none)" : "")}.");
+        }
+        if (never.Count == 0) Log.Write("creations-out: no game folder was found; checking without one");
+        else Log.Write($"creations-out: may not be inside {string.Join(", ", never)}");
         string? why;
         try
         {
-            why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), game == null ? null : new[] { game.Folder })
+            why = Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), never.Count == 0 ? null : never)
                   ?? (new DirectoryInfo(project.CreationsOut).LinkTarget is { } to ? $"the creations-out folder {project.CreationsOut} is a link or junction to {to}" : null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

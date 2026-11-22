@@ -66,6 +66,7 @@ jobs:
           $lines = Get-ChildItem -File | Where-Object Name -ne SHA256SUMS | Sort-Object Name | ForEach-Object {
             "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
           }
+          if (-not $lines) { throw "There are no release files in out to checksum. Fix: check the publish, zip and template steps above." }
           $text = ($lines -join "`n") + "`n"
           [IO.File]::WriteAllText((Join-Path (Get-Location) 'SHA256SUMS'), $text, [Text.UTF8Encoding]::new($false))
           Get-Content SHA256SUMS
