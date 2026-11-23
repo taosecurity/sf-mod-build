@@ -5,6 +5,7 @@
 ### What's new
 
 - `zip.archives` in sfmod.json: a list of archive file names that your own builder writes into dist. `zip` ships them, `pack` and the stray-archive check leave them alone, and `validate` lists them under "holds". A listed archive that isn't in dist stops `zip` (exit 2) and names the file and the fix. Any `.ba2` in dist that is neither made by `pack` nor listed is still refused. A listed name can't be one `pack` makes, can't hold a folder, and can't repeat.
+- The message for an archive in dist that the build doesn't make now gives both fixes: delete it, or list it in `zip.archives` when your builder writes it on purpose. `validate`'s PROBLEM for a `.ba2` in `zip.files` now points to `zip.archives` too.
 
 ### Example
 
@@ -18,7 +19,7 @@ This is `zip` on a made-up mod whose builder writes `MyMod - Extra.ba2` into dis
 
 and the same mod without the `archives` line:
 
-    RESULT: CANNOT ZIP (C:\Mods\MyMod\dist\MyMod - Extra.ba2 is an archive in dist that this build doesn't make (the mod's archives are none), so the zip can't take it. Fix: delete it from dist; sf-mod-build ships only the archives it builds, or the ones your builder writes and you list in zip.archives).
+    RESULT: CANNOT ZIP (C:\Mods\MyMod\dist\MyMod - Extra.ba2 is an archive in dist that this build doesn't make (the mod has no archives), so the zip can't take it. Fix: delete it from dist, or, if your builder writes it on purpose, list its name in zip.archives in sfmod.json; sf-mod-build ships only the archives it builds and the ones listed there).
 
 ## 0.2.1 (2026-11-22)
 

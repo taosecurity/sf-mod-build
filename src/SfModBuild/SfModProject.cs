@@ -704,7 +704,7 @@ internal sealed class SfModProject
                     }
                     if (e.Name.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase) || target.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase))
                     {
-                        Error(field, "it is an archive (.ba2); zip.files takes other files only (README, LICENSE and the like).", $"remove it from zip.files and {Common.StrayArchiveFix}.");
+                        Error(field, "it is an archive (.ba2); zip.files takes other files only (README, LICENSE and the like).", "remove it from zip.files; if your builder writes it into dist, list its name in zip.archives instead.");
                         continue;
                     }
                     var source = PathOf(e.Name, field);

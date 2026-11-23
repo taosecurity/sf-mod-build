@@ -317,7 +317,7 @@ public class AssetsTests
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"zip.files[\"{source}\"]", output);
             Assert.Contains("PROBLEM:", output);
-            Assert.Contains("delete it from dist; sf-mod-build ships only the archives it builds", output);
+            Assert.Contains("remove it from zip.files; if your builder writes it into dist, list its name in zip.archives instead.", output);
         }
     }
 
@@ -554,7 +554,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "zip", sfmod);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("Fix: delete it from dist; sf-mod-build ships only the archives it builds", output);
+            Assert.Contains("Fix: delete it from dist, or, if your builder writes it on purpose, list its name in zip.archives in sfmod.json", output);
             Assert.DoesNotContain("zip.files", output);
             Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
         }
@@ -572,7 +572,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"{extra} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("Fix: delete it from dist; sf-mod-build ships only the archives it builds", output);
+            Assert.Contains("Fix: delete it from dist, or, if your builder writes it on purpose, list its name in zip.archives in sfmod.json", output);
             Assert.Empty(env.Execs);
             Assert.False(File.Exists(Mod(t, "creations-out", "Extra.ba2")));
             t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "main");
@@ -608,7 +608,8 @@ public class AssetsTests
             code = RunApp(env, out output, "zip", sfmod);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("zip.archives", output);
+            Assert.Contains("(the mod's archives are \"MyMod - Main.ba2\" and \"MyMod - Textures.ba2\" and \"MyMod - Extra.ba2\")", output);
+            Assert.Contains("if your builder writes it on purpose, list its name in zip.archives in sfmod.json", output);
             Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
         }
     }
@@ -675,7 +676,7 @@ public class AssetsTests
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT PACK ({other} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("Fix: delete it from dist; sf-mod-build ships only the archives it builds", output);
+            Assert.Contains("Fix: delete it from dist, or, if your builder writes it on purpose, list its name in zip.archives in sfmod.json", output);
             Assert.Empty(env.Execs);   // refused before any archive is made
             Assert.False(File.Exists(Mod(t, "creations-out", "Old - Main.ba2")));
         }

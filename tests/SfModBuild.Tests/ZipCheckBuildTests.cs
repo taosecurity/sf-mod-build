@@ -119,6 +119,24 @@ public class ZipCheckBuildTests
     }
 
     [Fact]
+    public void ZipRefusesAnUnlistedArchiveInAModWithNoArchivesAndNamesZipArchives()
+    {
+        // a regex, so the test holds whether the file has LF or CRLF line endings
+        var json = Regex.Replace(Json, "\"scripts\": \\{[^}]*\\},", "");
+        Assert.DoesNotContain("\"scripts\"", json);
+        var (t, sfmod, _, env) = Setup(json);
+        using (t)
+        {
+            File.Delete(Mod(t, "dist", "MyMod - Main.ba2"));
+            var extra = t.File(Path.Combine("mod", "dist", "MyMod - Extra.ba2"), "the builder's own archive");
+            Assert.Equal(ExitCodes.BadInput, RunApp(env, out var output, "zip", sfmod));
+            Assert.Contains($"RESULT: CANNOT ZIP ({extra} is an archive in dist that this build doesn't make (the mod has no archives), so the zip can't take it.", output);
+            Assert.Contains("Fix: delete it from dist, or, if your builder writes it on purpose, list its name in zip.archives in sfmod.json;", output);
+            Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
+        }
+    }
+
+    [Fact]
     public void ZipRefusesWithoutAPlugin()
     {
         var (t, sfmod, _, env) = Setup(built: false);

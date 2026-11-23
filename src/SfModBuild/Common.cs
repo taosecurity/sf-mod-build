@@ -136,7 +136,7 @@ internal static class Common
         && !project.ArchiveNames.Concat(project.ZipArchives).Contains(Path.GetFileName(file), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The fix for an archive the build doesn't make, in dist or in zip.files.</summary>
-    public const string StrayArchiveFix = "delete it from dist; sf-mod-build ships only the archives it builds, or the ones your builder writes and you list in zip.archives";
+    public const string StrayArchiveFix = "delete it from dist, or, if your builder writes it on purpose, list its name in zip.archives in sfmod.json; sf-mod-build ships only the archives it builds and the ones listed there";
 
     /// <summary>Why a stray archive stops the zip or the Creations set, with the fix.</summary>
     public static string StrayArchiveError(SfModProject project, string file, string what) =>
@@ -149,8 +149,8 @@ internal static class Common
     static string StrayArchiveText(SfModProject project, string file, string so)
     {
         var all = project.ArchiveNames.Concat(project.ZipArchives).ToList();
-        var made = all.Any() ? string.Join(" and ", all.Select(n => $"\"{n}\"")) : "none";
-        return $"{file} is an archive in dist that this build doesn't make (the mod's archives are {made}), so {so}. Fix: {StrayArchiveFix}";
+        var made = all.Any() ? "the mod's archives are " + string.Join(" and ", all.Select(n => $"\"{n}\"")) : "the mod has no archives";
+        return $"{file} is an archive in dist that this build doesn't make ({made}), so {so}. Fix: {StrayArchiveFix}";
     }
 
     /// <summary>Every file in the folder with this name, matched without case (a case-sensitive disk can hold
