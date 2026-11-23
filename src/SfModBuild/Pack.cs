@@ -233,6 +233,9 @@ internal static class Pack
             if (Archive(project, archive2, job, env, stdout) is { } code) return code;
         if (project.HasTexturesArchive && assets!.XboxTextures == null)
             stdout.WriteLine($"note     \"{project.XboxTexturesBa2Name}\" holds the PC-format textures (no assets.xboxTextures given); a console test is the only proof they look right on Xbox");
+        foreach (var a in project.ZipArchives)
+            if (Common.FilesNamed(project.CreationsOut, a).Count > 0)
+                stdout.WriteLine($"note     \"{a}\" (listed in zip.archives) was copied into the Creations set as your builder wrote it, not repacked for Xbox; it must already be right for the Xbox");
         stdout.WriteLine(pcJobs.Count == 1 ? $"RESULT: OK, {made} and the Creations set in {project.CreationsOut} made" : $"RESULT: OK, {made}, and the Creations set made in {project.CreationsOut}");
         return ExitCodes.Ok;
     }

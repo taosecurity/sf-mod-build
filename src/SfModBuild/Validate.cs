@@ -41,6 +41,7 @@ internal static class Validate
         var archives = p.ArchiveNames.ToList();
         o.WriteLine(archives.Count switch
         {
+            0 when p.ZipArchives.Count > 0 => $"plugin:   {p.Plugin} (pack makes no archive: no scripts or loose files; zip.archives lists {string.Join(" and ", p.ZipArchives.Select(a => $"\"{a}\""))})",
             0 => $"plugin:   {p.Plugin} (no archive: no scripts or loose files)",
             1 => $"plugin:   {p.Plugin} (archive \"{archives[0]}\")",
             _ => $"plugin:   {p.Plugin} (archives {string.Join(" and ", archives.Select(a => $"\"{a}\""))})",

@@ -279,9 +279,12 @@ internal sealed class SfModProject
             foreach (var (_, inZip) in zipFiles)
                 if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase))
                     Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its archives come from dist).", "leave the plugin and the archives out of zip.files.");
+            // all four of pack's names are refused, made by this build or not: pack deletes the PC ones from dist as
+            // old leftovers and writes the Xbox ones into creations-out over whatever is there
+            var packNames = new[] { p.Ba2Name, p.TexturesBa2Name, p.XboxBa2Name, p.XboxTexturesBa2Name };
             foreach (var a in zipArchives)
-                if (p.ArchiveNames.Contains(a, StringComparer.OrdinalIgnoreCase))
-                    Error("zip.archives", $"\"{a}\" is an archive that sf-mod-build pack makes itself (from the scripts and assets).", "take it out of zip.archives; list only archives your builder writes.");
+                if (packNames.Contains(a, StringComparer.OrdinalIgnoreCase))
+                    Error("zip.archives", $"\"{a}\" is a name that sf-mod-build pack uses for its own archives.", "give your builder's archive another name (for example \"MyMod - Extra.ba2\"), and list only archives your builder writes.");
             return p;
         }
 
@@ -749,7 +752,7 @@ internal sealed class SfModProject
                         continue;
                     }
                     var a = e.GetString()!;
-                    if (!a.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase) || !GoodFileName(a) || a.Contains('/') || a.Contains('\\'))
+                    if (!a.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase) || a.Length <= ".ba2".Length || !GoodFileName(a) || a.Contains('/') || a.Contains('\\'))
                     {
                         Error(field, $"\"{a}\" isn't a plain archive file name ending in .ba2.", "give only the file name of an archive in dist, for example \"MyMod - Extra.ba2\".");
                         continue;

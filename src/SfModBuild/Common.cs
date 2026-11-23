@@ -128,8 +128,8 @@ internal static class Common
         return Log.FilePath is not { } log || !Same(Full(log), Full(file));
     }
 
-    /// <summary>True for a .ba2 in dist whose name isn't one of the archives this build makes (names match without
-    /// case): an old archive, or one the builder or someone else put there. Zip and pack refuse it, so a build never
+    /// <summary>True for a .ba2 in dist whose name isn't one of the archives this build makes or zip.archives lists
+    /// (names match without case): an old archive, or one the builder or someone else put there. Zip and pack refuse it, so a build never
     /// passes while silently leaving out, or shipping, an archive it didn't make.</summary>
     public static bool StrayArchive(SfModProject project, string file) =>
         file.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase)
@@ -148,8 +148,12 @@ internal static class Common
 
     static string StrayArchiveText(SfModProject project, string file, string so)
     {
-        var all = project.ArchiveNames.Concat(project.ZipArchives).ToList();
-        var made = all.Any() ? "the mod's archives are " + string.Join(" and ", all.Select(n => $"\"{n}\"")) : "the mod has no archives";
+        var pack = project.ArchiveNames.ToList();
+        static string Names(IEnumerable<string> names) => string.Join(" and ", names.Select(n => $"\"{n}\""));
+        // pack's archives and the builder's listed ones are named apart, so a listed archive isn't taken for one pack makes
+        var made = project.ZipArchives.Count == 0
+            ? (pack.Any() ? "the mod's archives are " + Names(pack) : "the mod has no archives")
+            : (pack.Any() ? "pack makes " + Names(pack) : "pack makes no archives") + ", and zip.archives lists " + Names(project.ZipArchives);
         return $"{file} is an archive in dist that this build doesn't make ({made}), so {so}. Fix: {StrayArchiveFix}";
     }
 

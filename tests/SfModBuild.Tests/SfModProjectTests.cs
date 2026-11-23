@@ -354,7 +354,12 @@ public class SfModProjectTests
     }
 
     [Theory]
-    [InlineData("\"MyMod - Main.ba2\"", "makes itself")]
+    [InlineData("\"MyMod - Main.ba2\"", "pack uses for its own archives")]
+    // no assets, so pack doesn't make this one, but it would delete it from dist as an old leftover
+    [InlineData("\"mymod - textures.ba2\"", "pack uses for its own archives")]
+    [InlineData("\"MyMod - Main_xbox.ba2\"", "pack uses for its own archives")]
+    [InlineData("\"MyMod - Textures_xbox.ba2\"", "pack uses for its own archives")]
+    [InlineData("\".ba2\"", "plain archive file name")]
     [InlineData("\"sub/Extra.ba2\"", "plain archive file name")]
     [InlineData("\"Extra.zip\"", "plain archive file name")]
     [InlineData("\"A.ba2\", \"a.BA2\"", "listed twice")]

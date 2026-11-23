@@ -345,9 +345,10 @@ has them spelled in other letter case.
 
 - An archive your builder writes itself has to be listed in `zip.archives` (file names in dist, for example
   `["MyMod - Extra.ba2"]`) to ship. `zip` stops, naming the file, when a listed archive isn't in dist. It can't be
-  one of the names `pack` makes (`<plugin> - Main.ba2`, `<plugin> - Textures.ba2`). sf-mod-build doesn't check what
-  is inside it. With `"xbox": true` a listed archive is copied into creations-out as it is, so it must already
-  be right for the Xbox if you want it there.
+  one of the names `pack` uses (`<plugin> - Main.ba2`, `<plugin> - Textures.ba2` and their `_xbox` versions), even
+  for a mod whose `pack` makes no archive. sf-mod-build doesn't check what is inside it. With `"xbox": true` a
+  listed archive is copied into creations-out as it is (`pack` prints a note saying so), so it must already be
+  right for the Xbox if you want it there.
 - With `"xbox": true` and nothing left to pack, `pack` deletes only the mod's old archives from creations-out; the
   plugin and other files there stay as the last build left them, so creations-out isn't refreshed on that path.
 - creations-out takes dist's files only (the plugin and the archives). Other `zip.files` entries, such as a README

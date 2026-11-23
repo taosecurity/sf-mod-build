@@ -608,7 +608,7 @@ public class AssetsTests
             code = RunApp(env, out output, "zip", sfmod);
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
-            Assert.Contains("(the mod's archives are \"MyMod - Main.ba2\" and \"MyMod - Textures.ba2\" and \"MyMod - Extra.ba2\")", output);
+            Assert.Contains("(pack makes \"MyMod - Main.ba2\" and \"MyMod - Textures.ba2\", and zip.archives lists \"MyMod - Extra.ba2\")", output);
             Assert.Contains("if your builder writes it on purpose, list its name in zip.archives in sfmod.json", output);
             Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
         }
@@ -626,6 +626,37 @@ public class AssetsTests
             Assert.Contains("RESULT: CANNOT ZIP (there is no \"MyMod - Extra.ba2\" in", output);
             Assert.Contains("lists it in zip.archives. Fix: make your builder write it into dist, or take it out of zip.archives", output);
             Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
+        }
+    }
+
+    [Fact]
+    public void PackWithXboxSaysAListedArchiveWasCopiedAsItIs()
+    {
+        var (t, sfmod, game, env) = Setup(WithXbox(Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"assets\": { \"source\": \"Assets\" }, \"zip\": { \"archives\": [\"MyMod - Extra.ba2\"] }")));
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "MyMod - Extra.ba2"), "builder-written");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("builder-written", File.ReadAllText(Mod(t, "creations-out", "MyMod - Extra.ba2")));
+            Assert.Contains("note     \"MyMod - Extra.ba2\" (listed in zip.archives) was copied into the Creations set as your builder wrote it, not repacked for Xbox", output);
+        }
+    }
+
+    [Fact]
+    public void ValidateNamesListedArchivesWhenPackMakesNone()
+    {
+        var json = Json.Replace("\"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] },", "")
+            .Replace("\"assets\": { \"source\": \"Assets\" }", "\"zip\": { \"archives\": [\"MyMod - Extra.ba2\"] }");
+        var (t, sfmod, _, env) = Setup(json, withScript: false);
+        using (t)
+        {
+            var code = RunApp(env, out var output, "validate", sfmod);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Contains("plugin:   MyMod.esm (pack makes no archive: no scripts or loose files; zip.archives lists \"MyMod - Extra.ba2\")", output);
+            Assert.DoesNotContain("(no archive: no scripts", output);
         }
     }
 
