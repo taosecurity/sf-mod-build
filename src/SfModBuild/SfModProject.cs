@@ -285,6 +285,10 @@ internal sealed class SfModProject
             foreach (var a in zipArchives)
                 if (packNames.Contains(a, StringComparer.OrdinalIgnoreCase))
                     Error("zip.archives", $"\"{a}\" is a name that sf-mod-build pack uses for its own archives.", "give your builder's archive another name (for example \"MyMod - Extra.ba2\"), and list only archives your builder writes.");
+            // the Creations set needs an Xbox build of every archive, and pack can make one only of its own archives
+            if (xbox && zipArchives.Count > 0)
+                Error("zip.archives", "it can't be used with \"xbox\": true, because pack can't make the Xbox copies of archives your builder writes, so the Creations set would lack them.",
+                    "leave \"xbox\" off for this mod, or have pack make the archives instead (put the files in assets.source and leave zip.archives out).");
             return p;
         }
 

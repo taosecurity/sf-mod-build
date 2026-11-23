@@ -121,7 +121,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   line naming it (pack without xbox only prints a `WARNING` line naming it and exits 0). Ask the person which
   case it is: an old or stray archive is deleted from dist (sf-mod-build ships only the archives it builds and the
   ones `zip.archives` lists); an archive the mod's own builder writes on purpose gets its file name listed in `zip.archives` in sfmod.json (for example `"archives": ["MyMod - Extra.ba2"]`);
-  `zip` then ships it, and stops with exit 2, naming it, if it isn't in dist. `zip.files` takes no archives, and
+  `zip` then ships it, and stops with exit 2, naming it, if it isn't in dist. `zip.archives` can't be used with
+  `"xbox": true` (validate reports a PROBLEM, since pack can't make Xbox copies of them). `zip.files` takes no archives, and
   validate reports a `.ba2` there as a PROBLEM. pack deletes the mod's own old
   archives from dist when the mod no longer needs them (and from creations-out when xbox is on and there is nothing
   to pack; the other files there stay as the last build left them).

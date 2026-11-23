@@ -4,7 +4,7 @@
 
 ### What's new
 
-- `zip.archives` in sfmod.json: a list of archive file names that your own builder writes into dist. `zip` ships them, `pack` and the stray-archive check leave them alone, and `validate` lists them under "holds". A listed archive that isn't in dist stops `zip` (exit 2) and names the file and the fix. Any `.ba2` in dist that is neither made by `pack` nor listed is still refused. A listed name can't be one of the four names `pack` uses (`<plugin> - Main.ba2`, `<plugin> - Textures.ba2` and their `_xbox` versions), can't hold a folder, and can't repeat. With `"xbox": true`, `pack` copies each listed archive into creations-out as it is and prints a note saying it wasn't repacked for Xbox.
+- `zip.archives` in sfmod.json: a list of archive file names that your own builder writes into dist. `zip` ships them, `pack` and the stray-archive check leave them alone, and `validate` lists them under "holds". A listed archive that isn't in dist stops `zip` (exit 2) and names the file and the fix. Any `.ba2` in dist that is neither made by `pack` nor listed is still refused. A listed name can't be one of the four names `pack` uses (`<plugin> - Main.ba2`, `<plugin> - Textures.ba2` and their `_xbox` versions), can't hold a folder, and can't repeat. `zip.archives` can't be used with `"xbox": true` (`validate` reports it as a PROBLEM), because `pack` can't make the Xbox copies of archives your builder writes.
 - The message for an archive in dist that the build doesn't make now gives both fixes: delete it, or list it in `zip.archives` when your builder writes it on purpose. `validate`'s PROBLEM for a `.ba2` in `zip.files` now points to `zip.archives` too.
 
 ### Example

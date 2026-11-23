@@ -9,7 +9,7 @@
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
 // given (Xbox-format exports, which must cover every PC texture), else the PC textures. Pack deletes the mod's own old
 // archives from dist (names match without case), and with "xbox" on it refuses any other .ba2 in dist (sf-mod-build
-// ships only the archives it builds and the ones zip.archives lists), so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
+// ships only the archives it builds; zip.archives can't be used with "xbox"), so the Creations set never silently lacks an archive. With nothing to pack and "xbox" on, it deletes
 // the mod's own old archives from creations-out too.
 // A scripts-only mod is packed straight from <stage>/Scripts, as before loose files were supported. With loose files,
 // each archive's files are first copied into <stage>/pack/<archive>, so every archive has one root.
@@ -233,9 +233,6 @@ internal static class Pack
             if (Archive(project, archive2, job, env, stdout) is { } code) return code;
         if (project.HasTexturesArchive && assets!.XboxTextures == null)
             stdout.WriteLine($"note     \"{project.XboxTexturesBa2Name}\" holds the PC-format textures (no assets.xboxTextures given); a console test is the only proof they look right on Xbox");
-        foreach (var a in project.ZipArchives)
-            if (Common.FilesNamed(project.CreationsOut, a).Count > 0)
-                stdout.WriteLine($"note     \"{a}\" (listed in zip.archives) was copied into the Creations set as your builder wrote it, not repacked for Xbox; it must already be right for the Xbox");
         stdout.WriteLine(pcJobs.Count == 1 ? $"RESULT: OK, {made} and the Creations set in {project.CreationsOut} made" : $"RESULT: OK, {made}, and the Creations set made in {project.CreationsOut}");
         return ExitCodes.Ok;
     }

@@ -630,7 +630,7 @@ public class AssetsTests
     }
 
     [Fact]
-    public void PackWithXboxSaysAListedArchiveWasCopiedAsItIs()
+    public void ListedArchivesWithXboxAreRefused()
     {
         var (t, sfmod, game, env) = Setup(WithXbox(Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"assets\": { \"source\": \"Assets\" }, \"zip\": { \"archives\": [\"MyMod - Extra.ba2\"] }")));
         using (t)
@@ -639,9 +639,25 @@ public class AssetsTests
             t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
             t.File(Path.Combine("mod", "dist", "MyMod - Extra.ba2"), "builder-written");
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("can't be used with \"xbox\": true", output);
+            Assert.False(Directory.Exists(Mod(t, "creations-out")) && File.Exists(Mod(t, "creations-out", "MyMod - Extra.ba2")));
+            code = RunApp(env, out output, "validate", sfmod);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("zip.archives", output);
+            Assert.Contains("leave \"xbox\" off for this mod", output);
+        }
+    }
+
+    [Fact]
+    public void AnEmptyArchivesListWithXboxIsFine()
+    {
+        var (t, sfmod, _, env) = Setup(WithXbox(Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"assets\": { \"source\": \"Assets\" }, \"zip\": { \"archives\": [] }")));
+        using (t)
+        {
+            var code = RunApp(env, out var output, "validate", sfmod);
+            Assert.DoesNotContain("can't be used with \"xbox\"", output);
             Assert.True(code == ExitCodes.Ok, output);
-            Assert.Equal("builder-written", File.ReadAllText(Mod(t, "creations-out", "MyMod - Extra.ba2")));
-            Assert.Contains("note     \"MyMod - Extra.ba2\" (listed in zip.archives) was copied into the Creations set as your builder wrote it, not repacked for Xbox", output);
         }
     }
 
