@@ -127,15 +127,16 @@ internal static class Pack
                 return $"the creations-out folder {folder} is a link or junction to {to}, so pack would delete files wherever it points. Fix: in {project.File}, set \"creationsOut\" to a real folder of its own, for example \"creations-out\"";
             var mine = Common.OwnNames(project);
             mine.Add(Common.MadeList);
-            var list = Path.Combine(folder, Common.MadeList);
-            if (File.Exists(list)) mine.UnionWith(File.ReadAllLines(list).Where(n => n.Length > 0 && Path.GetFileName(n) == n));
+            mine.UnionWith(Common.ReadMadeList(folder));
             if (Directory.Exists(project.Dist))
                 mine.UnionWith(Directory.GetFiles(project.Dist).Where(Common.Shippable).Select(f => Path.GetFileName(f)));
             var foreign = new List<string>();
+            // zip.folder is creations-out itself: its zips stay; anywhere else, a zip here is the user's and is named
+            var zipsHere = Common.IsZipFolder(project, folder);
             foreach (var e in d.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }).OrderBy(e => e.Name, StringComparer.Ordinal))
             {
-                // zip.folder at or inside creations-out: the zips (and the folder holding them) stay, as in dist
-                if (e is FileInfo z && (z.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || z.Name.EndsWith(Zip.PartialSuffix, StringComparison.OrdinalIgnoreCase))) continue;
+                // zip.folder at or inside creations-out: the zips (or the folder holding them) stay, as in dist
+                if (zipsHere && e is FileInfo z && (z.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || z.Name.EndsWith(Zip.PartialSuffix, StringComparison.OrdinalIgnoreCase))) continue;
                 if (e is DirectoryInfo && Common.HoldsZipFolder(project, e.FullName)) continue;
                 // only plain files are ever deleted here: a folder (or a link) is always the user's
                 if (e is FileInfo f && f.LinkTarget == null && mine.Contains(f.Name)) delete.Add(f);

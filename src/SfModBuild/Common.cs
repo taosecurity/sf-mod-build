@@ -198,7 +198,8 @@ internal static class Common
     static bool PlainName(string name) =>
         name.Length > 0 && name != "." && name != ".." && name.IndexOfAny(new[] { '/', '\\', ':' }) < 0 && name.Trim() == name;
 
-    static HashSet<string> ReadMadeList(string dist)
+    /// <summary>The plain names in a folder's made list (empty when there is none).</summary>
+    public static HashSet<string> ReadMadeList(string dist)
     {
         var file = Path.Combine(dist, MadeList);
         if (!File.Exists(file)) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -235,6 +236,9 @@ internal static class Common
             RecordMade(dist, after.Where(n => before == null || !before.Contains(n)), add: true);
         return code;
     }
+
+    /// <summary>True when the path is zip.folder itself.</summary>
+    public static bool IsZipFolder(SfModProject project, string path) => Same(Full(project.ZipFolder), Full(path));
 
     /// <summary>True when the path is zip.folder or a folder holding it.</summary>
     public static bool HoldsZipFolder(SfModProject project, string path) =>

@@ -52,6 +52,25 @@ public partial class PluginPackTests
         }
     }
 
+    /// <summary>0.4.1 code-review round 2: with zip.folder elsewhere, a zip in creations-out is the user's, so pack
+    /// names it and stops instead of leaving it silently in the upload set.</summary>
+    [Fact]
+    public void PackWithXboxNamesAZipInCreationsOutWhenZipFolderIsElsewhere()
+    {
+        var (t, sfmod, game, env) = Setup(Json.Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"xbox\": true,"));
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "creations-out", "MyMod-0.1.0.zip"), "a zip the user copied here");
+            env.ExecResult = FakeArchive2;
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains("\"MyMod-0.1.0.zip\"", output);
+            Assert.Equal("a zip the user copied here", File.ReadAllText(Mod(t, "creations-out", "MyMod-0.1.0.zip")));
+        }
+    }
+
     [Fact]
     public void PackWithXboxKeepsCreationsOutsListWhenADeleteFails()
     {
