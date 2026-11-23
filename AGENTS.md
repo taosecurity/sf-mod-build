@@ -137,7 +137,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   "format": "general" | "dds" }`. A `source` folder must be inside the mod's folder and apart from dist, stage and
   creations-out, and apart from `assets.source`, `assets.xboxTextures` and the other entries' sources (neither may
   hold the other); validate doesn't look inside it (a `steps.afterPlugin` command may fill it), and pack stops with
-  exit 2 before Archive2 runs when it is missing, empty, holds a file at its top, a link, a dot file, `Thumbs.db`,
+  exit 2 before Archive2 runs when it is missing, empty, holds a file at its top, a link, a dot file or folder, `Thumbs.db`,
   `desktop.ini`, or a `.psc`, plugin, archive or zip. A `file` is a ready `.ba2` that must exist (it may be outside the mod; it is only read);
   `compression` and `format` are refused with it. The suffix may be `Main` or `Textures` only when pack doesn't make
   that archive itself. Refused with `"xbox": true`, and a name can't also be in `zip.archives`.
@@ -220,3 +220,6 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   0.3.0); they can't be used with `"xbox": true`. Otherwise put their files in the assets folder, so pack builds
   them into the mod's own archives, or use the `archives` list (since 0.4.0) for a folder pack should pack as its
   own archive or a ready archive to copy; that can't be used with `"xbox": true` either.
+- With `"xbox": true`, pack fills creations-out before `steps.afterPack` runs, so a file an afterPack command
+  adds to dist or changes there reaches the zip but not creations-out. A command whose output must ship on both
+  goes in `steps.afterPlugin`.

@@ -341,9 +341,10 @@ internal static class Pack
                         return $"{what}: {e.FullName} in {src} is a link or junction, which pack doesn't follow. Fix: copy the files themselves into the folder";
                     if (e is not FileInfo f) continue;
                     // Archive2 packs the folder as it is, so clutter that assets.source leaves out would ship
-                    if (f.Name.StartsWith('.') || SfModProject.SkippedAssetNames.Contains(f.Name, StringComparer.OrdinalIgnoreCase))
-                        return $"{what}: {f.FullName} would be packed into the archive, because pack packs {src} as it is (it leaves out dot files, Thumbs.db and desktop.ini only in assets.source). Fix: delete it or move it out of {src}";
                     var rel = Path.GetRelativePath(src, f.FullName);
+                    // a dot folder (.git, .vs) counts too, as in assets.source
+                    if (rel.Split(Path.DirectorySeparatorChar).Any(part => part.StartsWith('.')) || SfModProject.SkippedAssetNames.Contains(f.Name, StringComparer.OrdinalIgnoreCase))
+                        return $"{what}: {f.FullName} would be packed into the archive, because pack packs {src} as it is (it leaves out dot files, dot folders, Thumbs.db and desktop.ini only in assets.source). Fix: delete it or move it out of {src}";
                     if (!rel.Contains(Path.DirectorySeparatorChar))
                         return $"{what}: {f.FullName} is at the top of {src}, where the game never looks inside an archive. Fix: put it in the Data folder it belongs to (Sound\\, Meshes\\ and so on), or move it out";
                     if (SfModProject.RefusedAssetExtensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase))

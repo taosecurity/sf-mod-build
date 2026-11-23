@@ -225,6 +225,10 @@ internal static class Common
         return code;
     }
 
+    /// <summary>True when the path is zip.folder or a folder holding it.</summary>
+    public static bool HoldsZipFolder(SfModProject project, string path) =>
+        Same(Full(project.ZipFolder), Full(path)) || Under(Full(project.ZipFolder), Full(path));
+
     /// <summary>Gets dist ready for a new plugin, deleting only what earlier builds made there: the names in the made
     /// list, plugin and archive files, and half-written zips. Zips stay. When dist holds anything else (a folder or
     /// file the user keeps there), nothing is deleted and the reason names each one. Null when done, else why it
@@ -254,7 +258,7 @@ internal static class Common
                 var file = e is FileInfo;
                 if (file && n.EndsWith(".zip", PathCase)) continue;
                 // zip.folder inside dist ("dist/release"): the zips stay, so the folder holding them stays too
-                if (!file && (Same(Full(project.ZipFolder), Full(e.FullName)) || Under(Full(project.ZipFolder), Full(e.FullName)))) continue;
+                if (!file && HoldsZipFolder(project, e.FullName)) continue;
                 if (Same(n, MadeList) || made.Contains(n)
                     || (file && (BuildKinds.Any(k => n.EndsWith(k, PathCase)) || n.EndsWith(Zip.PartialSuffix, PathCase))))
                     delete.Add(e);

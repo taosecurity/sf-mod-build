@@ -347,7 +347,7 @@ in dist, checking the archives) still builds with one `sf-mod-build build`.
   `RESULT: FAILED at steps.afterPack[1] (python.exe exited with code 3)`. The commands after it don't run, and a
   failed builder or Archive2 run skips the steps.
 - A file that a step (or the builder) makes and that should ship goes in dist, because zip takes dist's files as
-  they are; a step can rename it there. `zip.files` takes only files that are there before the build, since
+  they are (with `"xbox": true`, see [Limits](#limits) for afterPack); a step can rename it there. `zip.files` takes only files that are there before the build, since
   `validate` checks that each one exists.
 
 ```jsonc
@@ -460,8 +460,8 @@ A `source` folder must be inside the mod's folder and apart from dist, stage and
 ships twice. It may be filled by a `steps.afterPlugin` command, so `validate` doesn't look inside it; `pack` stops
 with exit 2, before Archive2 runs, when it isn't there, is empty, holds a file at its top, a link, or a `.psc`,
 plugin, archive or zip. Because Archive2 packs the folder as it is, `pack` also stops on a dot file (such as
-`.gitkeep`), `Thumbs.db` or `desktop.ini` anywhere in it, which `assets.source` would leave out. A `file` must be
-there when `validate` runs. A copy that `pack` or `plugin` makes of a read-only file is not read-only, so the next
+`.gitkeep`), a file in a dot folder (such as `.git`), `Thumbs.db` or `desktop.ini` anywhere in it, which
+`assets.source` would leave out. A `file` must be there when `validate` runs. A copy that `pack` or `plugin` makes of a read-only file is not read-only, so the next
 build can replace it.
 
 An archive can't be in both `archives` and `zip.archives`. In this version
@@ -519,6 +519,9 @@ RESULT: OK
   plugin and other files there stay as the last build left them, so creations-out isn't refreshed on that path.
 - creations-out takes dist's files only (the plugin and the archives). Other `zip.files` entries, such as a README
   or LICENSE, go into the zip but not into creations-out, since a Creation takes the plugin and its archives.
+- With `"xbox": true`, `pack` fills creations-out before your `steps.afterPack` commands run, so a file one of
+  them adds to dist or changes there goes into the zip but not into creations-out. Put a command whose output
+  must ship on both in `steps.afterPlugin` instead.
 
 ## Setup checks in doctor
 

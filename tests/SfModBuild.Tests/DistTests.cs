@@ -102,6 +102,12 @@ public partial class PluginPackTests
             var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
             Assert.True(code == ExitCodes.Ok, output);
             Assert.Equal("an earlier build's zip", File.ReadAllText(Mod(t, "dist", "release", "MyMod-0.1.0.zip")));
+            // the zip folder never joins the made list, so a build after zip.folder changes can't delete its zips
+            Assert.DoesNotContain("release", File.ReadAllLines(Mod(t, "dist", Common.MadeList)));
+            File.WriteAllText(sfmod, File.ReadAllText(sfmod).Replace("dist/release", "dist/out"));
+            Assert.Equal(ExitCodes.BadInput, RunApp(env, out output, "plugin", sfmod, "--game", game));
+            Assert.Contains("\"release\" (a folder)", output);
+            Assert.Equal("an earlier build's zip", File.ReadAllText(Mod(t, "dist", "release", "MyMod-0.1.0.zip")));
         }
     }
 

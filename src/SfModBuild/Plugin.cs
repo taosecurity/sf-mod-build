@@ -169,9 +169,14 @@ internal static class Plugin
             stdout.WriteLine($"RESULT: CANNOT BUILD THE PLUGIN ({cleanError}).");
             return ExitCodes.BadInput;
         }
-        // dist now holds only zips, so everything else there when the builder ends (even when it fails) is the build's
+        // dist now holds only zips (and the zip folder), so everything else there when the builder ends (even when it
+        // fails) is the build's; the zip folder never joins the list, so its zips can't be deleted later
         try { return MakeIn(project, exe, args, env, stdout); }
-        finally { Common.RecordMade(project.Dist, Common.DistEntries(project.Dist) ?? new HashSet<string>(), add: false); }
+        finally
+        {
+            Common.RecordMade(project.Dist, (Common.DistEntries(project.Dist) ?? new HashSet<string>())
+                .Where(n => !Common.HoldsZipFolder(project, Path.Combine(project.Dist, n))), add: false);
+        }
     }
 
     static int MakeIn(SfModProject project, string? exe, List<string>? args, IHostEnv env, TextWriter stdout)

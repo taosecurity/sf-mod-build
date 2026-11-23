@@ -196,6 +196,8 @@ public class ArchivesTests
     [InlineData("Sound/Voice/Old.ba2", "never goes inside an archive")]
     [InlineData(".gitkeep", "as it is")]
     [InlineData("Sound/desktop.ini", "as it is")]
+    [InlineData(".git/HEAD", "as it is")]
+    [InlineData("Sound/.vs/config/settings.json", "as it is")]
     public void PackRefusesABadSourceFolderBeforeArchive2Runs(string? file, string expected)
     {
         var (t, sfmod, game, env) = Setup(Json(Voices + ", { \"suffix\": \"Later\", \"source\": \"Later\" }"));
