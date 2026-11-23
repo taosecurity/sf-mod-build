@@ -70,6 +70,7 @@ internal static class Validate
             // every program a build would run, so a downloaded mod's sfmod.json can be read before it is built
             o.WriteLine($"runs:     {Plugin.Shown(p)}");
         }
+        foreach (var line in Steps.Shown(p)) o.WriteLine($"runs:     {line}");
         o.WriteLine($"dist:     {p.Dist}");
         o.WriteLine($"stage:    {p.Stage}");
         var xboxArchives = (p.HasMainArchive ? new[] { p.XboxBa2Name } : Array.Empty<string>())

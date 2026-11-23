@@ -17,6 +17,10 @@
 //       "prebuilt": "Original/MyMod.esm",          ... or a ready plugin, copied into dist under the plugin name
 //       "args": ["{data}", "{dist}", "{version}"]  what the builder is given; placeholders below (required with
 //     },                                           project and command, refused with prebuilt)
+//     "steps": {                                   your own commands, each a list like builder.command (leave out
+//       "afterPlugin": [["python", "tools/copy_voice.py", "{dist}"]],  when unused): run at the end of plugin ...
+//       "afterPack": [["tools/check_archives.cmd", "{dist}"]]          ... and at the end of pack, in order
+//     },
 //     "dist": "dist",                              the plugin and the BA2 go here (default dist)
 //     "stage": ".build/stage",                     compiled scripts go here (default .build/stage)
 //     "xbox": false,                               also make "<plugin> - Main_xbox.ba2" in creations-out (default false)
@@ -42,10 +46,12 @@
 // {dist}, {scripts} the (first) script source folder, {stage}, {version}. Zip name and zip file name placeholders:
 // {name}, {plugin} (without extension), {version}.
 //
-// builder.command runs a program named in this file, so sfmod.json is trusted input, like the builder project itself:
-// read a downloaded mod's sfmod.json (validate prints every command as a "runs:" line) before building it. A program
-// with a / or \ in it is a path relative to this file's folder; a bare name is looked up on PATH. The working folder
-// is this file's folder.
+// Steps placeholders: the builder's, plus {name} and {plugin} (without extension).
+//
+// builder.command and steps run programs named in this file, so sfmod.json is trusted input, like the builder project
+// itself: read a downloaded mod's sfmod.json (validate prints every command as a "runs:" line) before building it. A
+// program with a / or \ in it is a path relative to this file's folder; a bare name is looked up on PATH. The working
+// folder is this file's folder. A step command that exits non-zero stops plugin or pack, naming the command.
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -98,6 +104,11 @@ internal sealed class SfModProject
         BuilderProject != null ? new[] { Path.GetDirectoryName(BuilderProject)! }
         : BuilderCommand != null ? (Path.IsPathRooted(BuilderCommand[0]) ? new[] { Path.GetDirectoryName(BuilderCommand[0])! } : Array.Empty<string>())
         : new[] { Path.GetDirectoryName(BuilderPrebuilt!)! };
+    /// <summary>steps.afterPlugin: commands run at the end of plugin, each the program (resolved like builder.command's)
+    /// and its arguments with the placeholders still in.</summary>
+    public IReadOnlyList<IReadOnlyList<string>> AfterPlugin { get; init; } = Array.Empty<IReadOnlyList<string>>();
+    /// <summary>steps.afterPack: commands run at the end of pack.</summary>
+    public IReadOnlyList<IReadOnlyList<string>> AfterPack { get; init; } = Array.Empty<IReadOnlyList<string>>();
     public required string Dist { get; init; }
     public required string Stage { get; init; }
     public bool Xbox { get; init; }
@@ -151,7 +162,9 @@ internal sealed class SfModProject
 
     public const string FileName = "sfmod.json";
 
-    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "dist", "stage", "xbox", "creationsOut", "assets", "zip", "check" };
+    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "zip", "check" };
+    static readonly string[] StepsFields = { "afterPlugin", "afterPack" };
+    public static readonly string[] StepPlaceholders = { "data", "dist", "scripts", "stage", "version", "name", "plugin" };
     static readonly string[] AssetsFields = { "source", "xboxTextures" };
     // Never packed into an archive: plugins and archives belong at the top of the zip, Papyrus source never ships.
     static readonly string[] RefusedAssetExtensions = { ".psc", ".esm", ".esp", ".esl", ".ba2", ".zip", ".7z", ".rar" };
@@ -258,6 +271,7 @@ internal sealed class SfModProject
 
             var scripts = Scripts(root);
             var builder = Builder(root);
+            var steps = Steps(root, scripts != null);
             var dist = Folder(root, "dist", "dist");
             var stage = Folder(root, "stage", Path.Combine(".build", "stage"));
             if (dist != null && stage != null && SamePath(dist, stage))
@@ -276,13 +290,19 @@ internal sealed class SfModProject
                     Error(field, $"{path} isn't inside the mod's folder {folder}, and every build empties it.",
                         $"give a folder inside the mod's folder, relative to sfmod.json, for example \"{(field == "stage" ? ".build/stage" : field == "dist" ? "dist" : "creations-out")}\".");
             // a builder file inside a folder the tool empties would be deleted before it is used
+            var programs = new List<(string Field, string? File)>();
             if (builder != null)
-                foreach (var (bField, bFile) in new[] { ("builder.command[0]", builder.Command is { } c && Path.IsPathRooted(c[0]) ? c[0] : null), ("builder.prebuilt", builder.Prebuilt) })
-                    if (bFile != null)
-                        foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
-                            if (path != null && IsUnder(bFile, path))
-                                Error(bField, $"{bFile} is inside {field} ({path}), which the build empties before it is used.",
-                                    "keep it in a folder of its own, outside dist, stage and creations-out.");
+                programs.AddRange(new[] { ("builder.command[0]", builder.Command is { } c && Path.IsPathRooted(c[0]) ? c[0] : null), ("builder.prebuilt", builder.Prebuilt) });
+            if (steps is { } st)
+                foreach (var (list, commands) in new[] { ("afterPlugin", st.AfterPlugin), ("afterPack", st.AfterPack) })
+                    for (var i = 0; i < commands.Count; i++)
+                        if (Path.IsPathRooted(commands[i][0])) programs.Add(($"steps.{list}[{i}][0]", commands[i][0]));
+            foreach (var (bField, bFile) in programs)
+                if (bFile != null)
+                    foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
+                        if (path != null && IsUnder(bFile, path))
+                            Error(bField, $"{bFile} is inside {field} ({path}), which the build empties before it is used.",
+                                "keep it in a folder of its own, outside dist, stage and creations-out.");
             var assetsOk = true;
             AssetsSection? assets = null;
             if (dist != null && stage != null && creationsOut != null)
@@ -292,20 +312,21 @@ internal sealed class SfModProject
                 if (builder?.Project != null) hold.Add(("the builder", Path.GetDirectoryName(builder.Project)!));
                 if (builder?.Command is { } cmd && Path.IsPathRooted(cmd[0])) hold.Add(("the builder program", cmd[0]));
                 if (builder?.Prebuilt != null) hold.Add(("the prebuilt plugin", builder.Prebuilt));
+                hold.AddRange(programs.Where(x => x.Field.StartsWith("steps.", StringComparison.Ordinal)).Select(x => ("a steps program", x.File!)));
                 if (scripts != null) hold.AddRange(scripts.Sources.Select(s => ("a script source folder", s)));
                 assets = Assets(root, xbox, keep, hold, out assetsOk);
             }
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
             var (checker, checkRequired, checkArgs) = Check(root);
 
-            if (plugin == null || name == null || version == null || builder == null || dist == null
+            if (plugin == null || name == null || version == null || builder == null || steps == null || dist == null
                 || stage == null || creationsOut == null || !assetsOk || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
                 File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts, Assets = assets,
                 BuilderProject = builder.Project, BuilderCommand = builder.Command, BuilderPrebuilt = builder.Prebuilt,
-                BuilderArgs = builder.Args, Dist = dist, Stage = stage, Xbox = xbox,
+                BuilderArgs = builder.Args, AfterPlugin = steps.Value.AfterPlugin, AfterPack = steps.Value.AfterPack, Dist = dist, Stage = stage, Xbox = xbox,
                 CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
@@ -684,35 +705,46 @@ internal sealed class SfModProject
 
         /// <summary>builder.command: a list, the program first. A program with a slash is a file relative to sfmod.json
         /// (made a full path); a bare name stays as it is and is looked up on PATH when the plugin is built.</summary>
-        List<string>? BuilderCommand(JsonElement b)
+        List<string>? BuilderCommand(JsonElement b) =>
+            Command(b.GetProperty("command"), "builder.command", BuilderPlaceholders, "[\"python\", \"tools/build.py\"]");
+
+        /// <summary>One command (builder.command or a steps entry): a list of strings, the program first. A program with
+        /// a slash is a file relative to sfmod.json (made a full path); a bare name stays as it is and is looked up on
+        /// PATH when the command runs. Null when it has a PROBLEM.</summary>
+        List<string>? Command(JsonElement c, string field, string[] placeholders, string example)
         {
-            var c = b.GetProperty("command");
-            const string example = "[\"python\", \"tools/build.py\"]";
             if (c.ValueKind != JsonValueKind.Array)
             {
-                Error("builder.command", $"it is a {Kind(c)}, not a list.", $"write the program and its arguments as a list, for example {example} (it is never run through a shell).");
+                Error(field, $"it is a {Kind(c)}, not a list.", $"write the program and its arguments as a list, for example {example} (it is never run through a shell).");
                 return null;
             }
-            var raw = StringList(b, "command", "builder.command", example);
-            if (raw.Count != c.GetArrayLength()) return null;
+            var raw = new List<string>();
+            var i = 0;
+            foreach (var e in c.EnumerateArray())
+            {
+                if (e.ValueKind == JsonValueKind.String && e.GetString()!.Trim().Length > 0) raw.Add(e.GetString()!);
+                else Error($"{field}[{i}]", e.ValueKind == JsonValueKind.String ? "it is empty." : $"it is a {Kind(e)}, not a string.", $"write each entry as a string, for example {example}.");
+                i++;
+            }
+            if (raw.Count != i) return null;
             if (raw.Count == 0)
             {
-                Error("builder.command", "the list is empty.", $"give the program first, then its arguments, for example {example}.");
+                Error(field, "the list is empty.", $"give the program first, then its arguments, for example {example}.");
                 return null;
             }
             var program = raw[0];
             if (program.Contains('{') || program.Contains('}'))
             {
-                Error("builder.command[0]", $"\"{program}\" is the program, which can't hold a placeholder.", "give the program's name (found on PATH) or its path relative to sfmod.json, and put placeholders in the arguments after it.");
+                Error($"{field}[0]", $"\"{program}\" is the program, which can't hold a placeholder.", "give the program's name (found on PATH) or its path relative to sfmod.json, and put placeholders in the arguments after it.");
                 return null;
             }
             if (program.Contains('/') || program.Contains('\\'))
             {
-                var full = PathOf(program, "builder.command[0]");
+                var full = PathOf(program, $"{field}[0]");
                 if (full == null) return null;
                 if (NamesFolder(program) || !System.IO.File.Exists(full))
                 {
-                    Error("builder.command[0]", Directory.Exists(full) ? $"{full} is a folder, not a program." : $"{full} isn't there.",
+                    Error($"{field}[0]", Directory.Exists(full) ? $"{full} is a folder, not a program." : $"{full} isn't there.",
                         "give the program's path relative to sfmod.json, or a bare name such as \"python\" to find it on PATH.");
                     return null;
                 }
@@ -720,13 +752,49 @@ internal sealed class SfModProject
             }
             else if (!GoodFileName(program))
             {
-                Error("builder.command[0]", $"\"{program}\" isn't a program name.", "give a program found on PATH, such as \"python\" or \"dotnet\", or a path relative to sfmod.json.");
+                Error($"{field}[0]", $"\"{program}\" isn't a program name.", "give a program found on PATH, such as \"python\" or \"dotnet\", or a path relative to sfmod.json.");
                 return null;
             }
             var ok = true;
-            for (var i = 1; i < raw.Count; i++) ok &= Placeholders(raw[i], $"builder.command[{i}]", BuilderPlaceholders);
+            for (var j = 1; j < raw.Count; j++) ok &= Placeholders(raw[j], $"{field}[{j}]", placeholders);
             if (!ok) return null;
             return raw.Skip(1).Prepend(program).ToList();
+        }
+
+        /// <summary>The steps section: commands run at the end of plugin (afterPlugin) and of pack (afterPack). Both
+        /// lists are empty when it is left out; null when it has a PROBLEM.</summary>
+        (List<List<string>> AfterPlugin, List<List<string>> AfterPack)? Steps(JsonElement root, bool hasScripts)
+        {
+            var afterPlugin = new List<List<string>>();
+            var afterPack = new List<List<string>>();
+            if (!root.TryGetProperty("steps", out var s) || s.ValueKind == JsonValueKind.Null) return (afterPlugin, afterPack);
+            const string example = "[\"python\", \"tools/copy_voice.py\", \"{dist}\"]";
+            if (s.ValueKind != JsonValueKind.Object)
+            {
+                Error("steps", $"it is a {Kind(s)}, not an object.", $"write it like \"steps\": {{ \"afterPlugin\": [ {example} ] }}.");
+                return null;
+            }
+            var before = problems.Count(x => !x.IsWarning);
+            Fields(s, "steps.", StepsFields);
+            foreach (var (name, list) in new[] { ("afterPlugin", afterPlugin), ("afterPack", afterPack) })
+            {
+                if (!s.TryGetProperty(name, out var l) || l.ValueKind == JsonValueKind.Null) continue;
+                if (l.ValueKind != JsonValueKind.Array)
+                {
+                    Error($"steps.{name}", $"it is a {Kind(l)}, not a list of commands.", $"write it as a list of commands, each a list, for example [ {example} ].");
+                    continue;
+                }
+                var i = 0;
+                foreach (var e in l.EnumerateArray())
+                {
+                    var field = $"steps.{name}[{i++}]";
+                    if (Command(e, field, StepPlaceholders, example) is not { } command) continue;
+                    if (!hasScripts && command.Skip(1).Any(a => a.Contains("{scripts}")))
+                        Error(field, "it uses {scripts}, but the project has no \"scripts\" section.", "add the scripts section, or take {scripts} out of the command.");
+                    else list.Add(command);
+                }
+            }
+            return problems.Count(x => !x.IsWarning) == before ? (afterPlugin, afterPack) : null;
         }
 
         /// <summary>builder.prebuilt: a plugin file that already exists (it may be outside the mod; it is only read).</summary>

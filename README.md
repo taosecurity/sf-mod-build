@@ -216,8 +216,8 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build doctor [--game <folder>] [--checker <exe>] [--my-games <folder>]` | Finds the game, the Creation Kit's tools, .NET and the checker, and says how to get anything missing. Then it checks your setup (see [Setup checks](#setup-checks-in-doctor)). |
 | `sf-mod-build validate [<sfmod.json>]` | Checks the project file and prints what a build would use. Each problem names the field and the fix. |
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
-| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). |
-| `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. |
+| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
+| `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. Then it runs your `steps.afterPack` commands. |
 | `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does a listed archive that isn't in dist. `zip.files` takes no archives. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
@@ -251,6 +251,10 @@ allowed.
     "prebuilt": "Original/MyMod.esm",          // ... or a ready plugin, copied into dist under the plugin name
     "args": ["{data}", "{dist}", "{version}"]  // what the builder is given (required with project and command,
   },                                           // refused with prebuilt)
+  "steps": {                                   // your own commands, each a list like builder.command (optional):
+    "afterPlugin": [["python", "tools/copy_voice.py", "{dist}"]],  // run at the end of plugin ...
+    "afterPack": [["tools/check_archives.cmd", "{dist}"]]          // ... and at the end of pack, in order
+  },
   "dist": "dist",                              // the plugin and the BA2 go here (default dist)
   "stage": ".build/stage",                     // compiled scripts go here (default .build/stage)
   "xbox": false,                               // also make the "_xbox" archives in creations-out
@@ -275,7 +279,8 @@ allowed.
 
 Builder argument placeholders (in `builder.args`, and in `builder.command` after the program): `{data}` the game's
 Data folder, `{dist}`, `{scripts}` the (first) script source folder, `{stage}`, `{version}`; all paths are full
-paths. Zip name placeholders: `{name}`, `{plugin}` (without the extension), `{version}`.
+paths. Zip name placeholders: `{name}`, `{plugin}` (without the extension), `{version}`. Steps placeholders: the
+builder's, plus `{name}` and `{plugin}` (without the extension).
 
 ### Other kinds of builder
 
@@ -296,9 +301,41 @@ of the three.
 "builder": { "command": ["python", "tools/build.py", "--out", "{dist}"], "args": ["{version}"] }
 ```
 
-**Only build an sfmod.json you trust.** `builder.command` runs the program it names, just as `builder.project`
-runs the builder project's code. Before you build a mod someone else made, run `sf-mod-build validate` and read
-its `runs:` line, which shows each command a build would run.
+### Your own steps
+
+`steps` holds commands of your own that sf-mod-build runs for you, so a mod that needs one more job (copying voice
+files the builder picked, moving Strings tables into the assets folder, deleting a helper file the builder leaves
+in dist, checking the archives) still builds with one `sf-mod-build build`.
+
+- `steps.afterPlugin` runs at the end of `plugin`, after the plugin is checked; `steps.afterPack` runs at the end
+  of `pack`. Running `plugin` or `pack` on its own runs its steps too, so one step at a time gives the same result
+  as `build`.
+- Each command is a list written like `builder.command`: the program first (a path relative to `sfmod.json`, or a
+  bare name found on PATH), then its arguments, with the steps placeholders above. They run in order, in the
+  `sfmod.json` folder, without a shell, and each has 20 minutes to finish.
+- The programs (and the game, when a command uses `{data}`) are looked up before the builder or Archive2 runs, so a
+  missing program stops `plugin` or `pack` before it does any work (exit 2).
+- A command that exits with anything but 0 stops `plugin` or `pack` (exit 1, and `build` stops there too), and the
+  RESULT line names the command, for example
+  `RESULT: FAILED at steps.afterPack[1] (python.exe exited with code 3)`. The commands after it don't run, and a
+  failed builder or Archive2 run skips the steps.
+
+```jsonc
+"steps": { "afterPlugin": [["python", "tools/after.py", "{dist}/{plugin}.esm", "{name} {version}"]] }
+```
+
+```text
+> sf-mod-build plugin
+running the builder: python.exe (builder.command)
+built    C:\Mods\MyMod\dist\MyMod.esm (20 bytes)
+running  steps.afterPlugin[0]: python.exe tools/after.py C:\Mods\MyMod\dist/MyMod.esm "MyMod 0.1.0"
+ok       steps.afterPlugin[0]
+RESULT: OK, MyMod.esm built into C:\Mods\MyMod\dist
+```
+
+**Only build an sfmod.json you trust.** `builder.command` and `steps` run the programs they name, just as
+`builder.project` runs the builder project's code. Before you build a mod someone else made, run
+`sf-mod-build validate` and read its `runs:` lines, which show each command a build would run.
 
 `validate` refuses a plugin name that ends in an official plugin's name (such as `-ShatteredSpace.esm`) or starts
 with `BlueprintShips-`, because the game removes such names from Plugins.txt and they stop loading. It warns
@@ -469,7 +506,7 @@ tool stops on an unexpected error, it says so in one `RESULT: CANNOT RUN` line a
 | Code | Meaning |
 |---|---|
 | 0 | OK (a missing checker is only a WARNING, unless you require the check) |
-| 1 | the build or the check failed (a script didn't compile, the builder failed, the checker found problems) |
+| 1 | the build or the check failed (a script didn't compile, the builder failed, a `steps` command exited non-zero, the checker found problems) |
 | 2 | bad input or setup (a wrong option, a broken sfmod.json, a missing tool, `-release` asked for, an archive in dist that the build doesn't make) |
 
 ## Found a mistake?

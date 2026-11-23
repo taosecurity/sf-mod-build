@@ -22,13 +22,17 @@ internal static class Pack
         "usage: sf-mod-build pack [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
         "  packs the compiled scripts and the loose files (assets) into \"<plugin> - Main.ba2\" and \"<plugin> - Textures.ba2\"\n" +
         "  in dist with the Creation Kit's Archive2; with \"xbox\": true also makes creations-out (dist's files plus the\n" +
-        "  \"_xbox\" archives)";
+        "  \"_xbox\" archives); then runs steps.afterPack";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
 
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
-    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
+    /// <summary>Packs, then runs steps.afterPack.</summary>
+    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout) =>
+        Steps.After("afterPack", p, env, stdout, "CANNOT PACK", o => PackProject(p, env, o));
+
+    static int PackProject(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
         var project = Common.LoadProject(p, stdout, "CANNOT PACK");
         if (project == null) return ExitCodes.BadInput;

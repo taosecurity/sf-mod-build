@@ -92,6 +92,9 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   pack refuse an empty folder or a missing copy when the mod has PC textures). Without it,
   `<Plugin> - Textures_xbox.ba2` holds the PC textures.
 - Check the INI settings of a Mod Organizer 2 profile: `sf-mod-build doctor --my-games "<profile folder>"`.
+- Run one more job of the mod's own after the plugin or the archives are made (copy voice files, move Strings
+  tables, check the archives): add it to `steps.afterPlugin` or `steps.afterPack` in `sfmod.json` (section 6),
+  then `sf-mod-build validate` to see its `runs:` line.
 - One step at a time: `sf-mod-build compile`, `sf-mod-build plugin`, `sf-mod-build pack`, `sf-mod-build zip`,
   `sf-mod-build check` (each needs the steps before it to have run).
 - Troubleshoot: add `--verbose`, or `--log sf-mod-build-log.txt`, to any command.
@@ -110,7 +113,13 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
   `{data} {dist} {scripts} {stage} {version}` are filled in as full paths (in `builder.args` and in the command's
   arguments). `builder.command` runs whatever it names: before building a mod the person didn't write, run
-  `sf-mod-build validate` and show them its `runs:` line, which lists each command the build would run.
+  `sf-mod-build validate` and show them its `runs:` lines, which list each command the build would run.
+- Optional `steps.afterPlugin` and `steps.afterPack`: lists of commands (each a list like `builder.command`) run in
+  order at the end of `plugin` and at the end of `pack` (so also in `build`), in the sfmod.json folder, without a
+  shell. Placeholders: the builder's plus `{name}` and `{plugin}` (without extension). A missing program stops the
+  step before any work with exit 2; a command that exits non-zero stops it with exit 1 and a RESULT line naming it,
+  such as `RESULT: FAILED at steps.afterPack[1] (python.exe exited with code 3)`. A failed builder or Archive2 run
+  skips the steps. These run whatever they name too, and validate shows each one as a `runs:` line.
 - Loose files under `assets.source` (and Xbox textures under `assets.xboxTextures`), when the project has them.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
@@ -140,7 +149,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 ## 8. Exit codes
 
 - 0: OK (warnings allowed).
-- 1: the build or the check failed (compiler errors, builder failure, checker found problems).
+- 1: the build or the check failed (compiler errors, builder failure, a `steps` command that exited non-zero, checker found problems).
 - 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder, an archive in dist the build doesn't make).
 
 ## 9. The log

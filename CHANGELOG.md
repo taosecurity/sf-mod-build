@@ -8,6 +8,7 @@
 - `builder.command` runs any program that writes the plugin: a list with the program first and its first arguments after it, such as `["python", "tools/build.py"]` or `["dotnet", "run", "build.cs", "--"]`. `builder.args` are added after it, and the builder placeholders work in both. A program with a `/` or `\` is a path relative to sfmod.json; a bare name is found on PATH. It runs in the sfmod.json folder without a shell, and doesn't need .NET.
 - `builder.prebuilt` copies a ready plugin (made in the Creation Kit or by hand) into dist under the `plugin` name. It takes no `args`, and `plugin` needs neither the game nor .NET for it.
 - `validate` now prints a `runs:` line with the command a build would run. Read it before you build a mod someone else made: `builder.command` runs whatever program it names.
+- `steps.afterPlugin` and `steps.afterPack` in sfmod.json: lists of your own commands, each written like `builder.command`, run in order at the end of `plugin` and at the end of `pack`. Running a step on its own runs its commands too, so `build` and one step at a time give the same result. They take the builder placeholders plus `{name}` and `{plugin}`. A missing program stops the step before any work (exit 2); a command that exits non-zero stops it (exit 1) with a RESULT line naming the command. `validate` prints one `runs:` line per command.
 
 ### Example
 
@@ -31,6 +32,14 @@ and a mod with `"builder": { "prebuilt": "Original/MyOtherMod.esm" }`:
     > sf-mod-build plugin
     copied   C:\Mods\MyOtherMod\Original\MyOtherMod.esm to C:\Mods\MyOtherMod\dist\MyOtherMod.esm (21 bytes)
     RESULT: OK, MyOtherMod.esm copied into C:\Mods\MyOtherMod\dist
+
+and a made-up mod with one step after pack that fails, `"steps": { "afterPack": [["python", "tools/after.py", "{dist}/missing.txt", "fail"]] }`:
+
+    > sf-mod-build pack
+    running  steps.afterPack[0]: python.exe tools/after.py C:\Mods\StepsMod\dist/missing.txt fail
+    FAILED   steps.afterPack[0] (python.exe) exited with code 3
+             after.py: C:\Mods\StepsMod\dist/missing.txt is missing
+    RESULT: FAILED at steps.afterPack[0] (python.exe exited with code 3). Fix: fix the error shown above (the full output is in the log: --log <file>), or the command in C:\Mods\StepsMod\sfmod.json, and run again.
 
 ### Fixed
 

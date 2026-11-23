@@ -3,7 +3,7 @@ using Xunit;
 
 namespace SfModBuild.Tests;
 
-public class PluginPackTests
+public partial class PluginPackTests
 {
     const string Json = """
         {

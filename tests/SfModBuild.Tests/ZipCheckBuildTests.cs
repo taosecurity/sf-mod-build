@@ -4,7 +4,7 @@ using Xunit;
 
 namespace SfModBuild.Tests;
 
-public class ZipCheckBuildTests
+public partial class ZipCheckBuildTests
 {
     const string Json = """
         {

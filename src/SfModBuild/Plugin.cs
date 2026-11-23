@@ -9,14 +9,18 @@ internal static class Plugin
     public const string Usage =
         "usage: sf-mod-build plugin [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
         "  makes the plugin in dist (dist is emptied first) with the mod's builder: a .NET project (dotnet run -c Release),\n" +
-        "  a command from builder.command, or a ready plugin copied from builder.prebuilt";
+        "  a command from builder.command, or a ready plugin copied from builder.prebuilt; then runs steps.afterPlugin";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
 
     /// <summary>The first run restores packages and builds the builder, which can take a while.</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(20);
 
-    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
+    /// <summary>Makes the plugin, then runs steps.afterPlugin.</summary>
+    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout) =>
+        Steps.After("afterPlugin", p, env, stdout, "CANNOT BUILD THE PLUGIN", o => Make(p, env, o));
+
+    static int Make(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
         var project = Common.LoadProject(p, stdout, "CANNOT BUILD THE PLUGIN");
         if (project == null) return ExitCodes.BadInput;
@@ -58,16 +62,16 @@ internal static class Plugin
     }
 
     /// <summary>The placeholder values: full paths without a trailing separator, and the version.</summary>
-    public static Dictionary<string, string> Values(SfModProject project, string gameFolder)
+    public static Dictionary<string, string> Values(SfModProject project, string? gameFolder)
     {
         static string Full(string x) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(x));
         var values = new Dictionary<string, string>
         {
-            ["data"] = Full(Path.Combine(gameFolder, "Data")),
             ["dist"] = Full(project.Dist),
             ["stage"] = Full(project.Stage),
             ["version"] = project.Version,
         };
+        if (gameFolder != null) values["data"] = Full(Path.Combine(gameFolder, "Data"));
         if (project.Scripts is { Sources.Count: > 0 } s) values["scripts"] = Full(s.Sources[0]);
         return values;
     }
