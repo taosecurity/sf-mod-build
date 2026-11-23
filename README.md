@@ -454,10 +454,14 @@ count as stray. Each entry has a `suffix` and exactly one of these:
 
 The suffix may be `Main` or `Textures` only when `pack` doesn't make that archive itself (no scripts or general
 loose files for Main, no `.dds` files in `assets.source` for Textures); `validate` reports the clash as a PROBLEM.
-A `source` folder must be inside the mod's folder and apart from dist, stage and creations-out. It may be filled by
-a `steps.afterPlugin` command, so `validate` doesn't look inside it; `pack` stops with exit 2, before Archive2 runs,
-when it isn't there, is empty, holds a file at its top, a link, or a `.psc`, plugin, archive or zip. A `file` must
-be there when `validate` runs.
+A `source` folder must be inside the mod's folder and apart from dist, stage and creations-out, and apart from
+`assets.source`, `assets.xboxTextures` and the other entries' sources (one folder can't hold another), so no file
+ships twice. It may be filled by a `steps.afterPlugin` command, so `validate` doesn't look inside it; `pack` stops
+with exit 2, before Archive2 runs, when it isn't there, is empty, holds a file at its top, a link, or a `.psc`,
+plugin, archive or zip. Because Archive2 packs the folder as it is, `pack` also stops on a dot file (such as
+`.gitkeep`), `Thumbs.db` or `desktop.ini` anywhere in it, which `assets.source` would leave out. A `file` must be
+there when `validate` runs. A copy that `pack` or `plugin` makes of a read-only file is not read-only, so the next
+build can replace it.
 
 An archive can't be in both `archives` and `zip.archives`. In this version
 `archives` can't be used with `"xbox": true` (`validate` reports it as a PROBLEM): `pack` can't make a correct Xbox

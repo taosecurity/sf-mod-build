@@ -278,6 +278,15 @@ internal static class Common
     }
 
     /// <summary>Deletes the folder (when there) and makes it again, empty. Null when done, else why it failed.</summary>
+    /// <summary>File.Copy, then clears a read-only mark the copy took from its source, so the next build can delete
+    /// the copy from dist, stage or creations-out.</summary>
+    public static void CopyFile(string from, string to, bool overwrite = false)
+    {
+        File.Copy(from, to, overwrite);
+        var attributes = File.GetAttributes(to);
+        if (attributes.HasFlag(FileAttributes.ReadOnly)) File.SetAttributes(to, attributes & ~FileAttributes.ReadOnly);
+    }
+
     public static string? Empty(string folder)
     {
         if (Log.FilePath is { } log && Under(Full(log), Full(folder)))

@@ -134,9 +134,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Loose files under `assets.source` (and Xbox textures under `assets.xboxTextures`), when the project has them.
 - Optional top-level `archives`: a list of `{ "suffix", "source" or "file", "compression": "default" | "none",
   "format": "general" | "dds" }`. A `source` folder must be inside the mod's folder and apart from dist, stage and
-  creations-out; validate doesn't look inside it (a `steps.afterPlugin` command may fill it), and pack stops with
-  exit 2 before Archive2 runs when it is missing, empty, holds a file at its top, a link, or a `.psc`, plugin,
-  archive or zip. A `file` is a ready `.ba2` that must exist (it may be outside the mod; it is only read);
+  creations-out, and apart from `assets.source`, `assets.xboxTextures` and the other entries' sources (neither may
+  hold the other); validate doesn't look inside it (a `steps.afterPlugin` command may fill it), and pack stops with
+  exit 2 before Archive2 runs when it is missing, empty, holds a file at its top, a link, a dot file, `Thumbs.db`,
+  `desktop.ini`, or a `.psc`, plugin, archive or zip. A `file` is a ready `.ba2` that must exist (it may be outside the mod; it is only read);
   `compression` and `format` are refused with it. The suffix may be `Main` or `Textures` only when pack doesn't make
   that archive itself. Refused with `"xbox": true`, and a name can't also be in `zip.archives`.
 - Optional `parts`: a list of `{ "plugin", "scripts" }`, the other plugins the builder writes into dist. `scripts`

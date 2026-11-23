@@ -122,6 +122,8 @@ public class ArchivesTests
     [InlineData("{ \"suffix\": \"Extra\", \"file\": \"Builder/Builder.csproj\" }", "", "archives[0].file", "doesn't end in .ba2")]
     [InlineData(Voices + ", { \"suffix\": \"voices\", \"source\": \"Voices\" }", "", "archives[1].suffix", "twice")]
     [InlineData("{ \"suffix\": \"Voices\", \"source\": \"Voices\", \"sorce\": \"x\" }", "", "archives[0].sorce", "isn't a field")]
+    [InlineData("{ \"suffix\": \"Voices\", \"source\": \"Voices/Sound\" }", " \"assets\": { \"source\": \"Voices\" },", "archives[0].source", "packed into another archive")]
+    [InlineData(Voices + ", { \"suffix\": \"Sub\", \"source\": \"Voices/Sound\" }", "", "archives[1].source", "packed into another archive")]
     public void BadEntriesAreRefused(string archives, string more, string field, string expected)
     {
         var (t, sfmod, _, _) = Setup(Json(archives, more));
@@ -192,6 +194,8 @@ public class ArchivesTests
     [InlineData("", "holds no files")]
     [InlineData("loose.wem", "at the top of")]
     [InlineData("Sound/Voice/Old.ba2", "never goes inside an archive")]
+    [InlineData(".gitkeep", "as it is")]
+    [InlineData("Sound/desktop.ini", "as it is")]
     public void PackRefusesABadSourceFolderBeforeArchive2Runs(string? file, string expected)
     {
         var (t, sfmod, game, env) = Setup(Json(Voices + ", { \"suffix\": \"Later\", \"source\": \"Later\" }"));

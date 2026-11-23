@@ -218,7 +218,7 @@ internal sealed class SfModProject
     // Artists' source formats the game doesn't read; packed anyway, with a warning, in case the modder means it.
     static readonly string[] SourceArtExtensions = { ".tif", ".tiff", ".fbx", ".wav", ".psd", ".blend", ".png", ".tga", ".jpg", ".jpeg", ".xcf", ".spp" };
     // Left out without a word: system clutter and dot files such as .gitkeep.
-    static readonly string[] SkippedAssetNames = { "Thumbs.db", "desktop.ini" };
+    public static readonly string[] SkippedAssetNames ={ "Thumbs.db", "desktop.ini" };
     static readonly string[] ScriptsFields = { "source", "namespaces", "files" };
     static readonly string[] BuilderFields = { "project", "command", "prebuilt", "args" };
     static readonly string[] ZipFields = { "name", "folder", "files", "archives" };
@@ -366,8 +366,11 @@ internal sealed class SfModProject
                     hold.AddRange(parts.SelectMany(x => x.Scripts?.Sources ?? Array.Empty<string>()).Select(s => ("a part's script source folder", s)));
                 assets = Assets(root, xbox, keep, hold, out assetsOk);
             }
+            var packed = new List<(string, string)>();
+            if (assets?.Source != null) packed.Add(("assets.source", assets.Source));
+            if (assets?.XboxTextures != null) packed.Add(("assets.xboxTextures", assets.XboxTextures));
             var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 }, assets is { Textures.Count: > 0 },
-                dist, stage, creationsOut);
+                dist, stage, creationsOut, packed);
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
             var (checker, checkRequired, checkArgs) = Check(root);
 
@@ -466,8 +469,11 @@ internal sealed class SfModProject
         /// <summary>The top-level archives list: more archives pack makes in dist. A source folder is only checked for
         /// where it is (an afterPlugin step may fill it; pack checks its files); a file must exist now. Empty when left
         /// out; null when it has a PROBLEM.</summary>
-        List<SfModProject.ExtraArchive>? Archives(JsonElement root, string? plugin, bool xbox, bool hasMain, bool hasTextures, string? dist, string? stage, string? creationsOut)
+        List<SfModProject.ExtraArchive>? Archives(JsonElement root, string? plugin, bool xbox, bool hasMain, bool hasTextures, string? dist, string? stage, string? creationsOut,
+            List<(string Field, string Path)> packed)
         {
+            // packed: folders already packed into an archive (assets.source, assets.xboxTextures and, as the list is
+            // read, each earlier entry's source); a source that is, holds or is inside one would ship files twice
             var list = new List<SfModProject.ExtraArchive>();
             if (!root.TryGetProperty("archives", out var l) || l.ValueKind == JsonValueKind.Null) return list;
             const string example = "[ { \"suffix\": \"Voices\", \"source\": \"Voices\", \"compression\": \"none\" } ]";
@@ -547,6 +553,14 @@ internal sealed class SfModProject
                             Error(at + ".source", $"{source} is, holds or is inside {field} ({path}), which the build empties.", "keep the archive's files in a folder of their own, for example \"Voices\".");
                             source = null;
                         }
+                    foreach (var (field, path) in packed)
+                        if (source != null && (SamePath(source, path) || IsUnder(source, path) || IsUnder(path, source)))
+                        {
+                            Error(at + ".source", $"{source} is, holds or is inside {field} ({path}), which is packed into another archive, so the same files would ship twice.",
+                                "keep this archive's files in a folder of their own, beside the others, for example \"Voices\".");
+                            source = null;
+                        }
+                    if (source != null) packed.Add((at + ".source", source));
                     var compression = String(e, "compression", required: false, example: "\"none\"", field: at + ".compression") ?? "default";
                     if (compression is not ("default" or "none"))
                         Error(at + ".compression", $"\"{compression}\" isn't a compression pack knows.", "write \"default\", or \"none\" for sound (.wem) and lip files, which play silent when stored compressed.");

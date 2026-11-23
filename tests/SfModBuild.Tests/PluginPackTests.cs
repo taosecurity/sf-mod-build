@@ -385,4 +385,22 @@ public partial class PluginPackTests
             Assert.Contains("RESULT: OK, MyMod.esm copied into", output);
         }
     }
+
+    [Fact]
+    public void AReadOnlyPrebuiltPluginBuildsTwice()
+    {
+        var (t, sfmod, _, env) = Setup(Json.Replace(ProjectBuilder, "\"builder\": { \"prebuilt\": \"../original/Their Mod.esm\" }"));
+        using (t)
+        {
+            var ready = t.File(Path.Combine("original", "Their Mod.esm"), "made-up ready plugin");
+            File.SetAttributes(ready, File.GetAttributes(ready) | FileAttributes.ReadOnly);
+            try
+            {
+                Assert.True(RunApp(env, out var first, "plugin", sfmod) == ExitCodes.Ok, first);
+                Assert.False(File.GetAttributes(Mod(t, "dist", "MyMod.esm")).HasFlag(FileAttributes.ReadOnly));
+                Assert.True(RunApp(env, out var second, "plugin", sfmod) == ExitCodes.Ok, second);
+            }
+            finally { File.SetAttributes(ready, FileAttributes.Normal); }
+        }
+    }
 }

@@ -183,7 +183,7 @@ internal static class Plugin
             try
             {
                 Directory.CreateDirectory(project.Dist);
-                File.Copy(prebuilt, plugin, overwrite: true);
+                Common.CopyFile(prebuilt, plugin, overwrite: true);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {

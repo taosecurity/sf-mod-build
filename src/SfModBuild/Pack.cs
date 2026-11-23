@@ -239,7 +239,7 @@ internal static class Pack
             else
             {
                 if (DeleteOld(ba2, stdout) is { } code) return code;
-                try { File.Copy(extra.File!, ba2); }
+                try { Common.CopyFile(extra.File!, ba2); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
                     stdout.WriteLine($"RESULT: FAILED, {extra.File} couldn't be copied to {ba2} ({e.Message}). Fix: check that the file is there and readable, close any program using the archive, and run again.");
@@ -271,7 +271,7 @@ internal static class Pack
             foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.OrdinalIgnoreCase))
             {
                 if (!Common.Shippable(f)) continue;
-                File.Copy(f, Path.Combine(project.CreationsOut, Path.GetFileName(f)));
+                Common.CopyFile(f, Path.Combine(project.CreationsOut, Path.GetFileName(f)));
                 Log.Write($"copied {f} into {project.CreationsOut}");
             }
         }
@@ -340,6 +340,9 @@ internal static class Pack
                     if (e.LinkTarget != null)
                         return $"{what}: {e.FullName} in {src} is a link or junction, which pack doesn't follow. Fix: copy the files themselves into the folder";
                     if (e is not FileInfo f) continue;
+                    // Archive2 packs the folder as it is, so clutter that assets.source leaves out would ship
+                    if (f.Name.StartsWith('.') || SfModProject.SkippedAssetNames.Contains(f.Name, StringComparer.OrdinalIgnoreCase))
+                        return $"{what}: {f.FullName} would be packed into the archive, because pack packs {src} as it is (it leaves out dot files, Thumbs.db and desktop.ini only in assets.source). Fix: delete it or move it out of {src}";
                     var rel = Path.GetRelativePath(src, f.FullName);
                     if (!rel.Contains(Path.DirectorySeparatorChar))
                         return $"{what}: {f.FullName} is at the top of {src}, where the game never looks inside an archive. Fix: put it in the Data folder it belongs to (Sound\\, Meshes\\ and so on), or move it out";
@@ -438,7 +441,7 @@ internal static class Pack
     static void Copy(string from, string to)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-        File.Copy(from, to);
+        Common.CopyFile(from, to);
         Log.Write($"staged {from} -> {to}");
     }
 
