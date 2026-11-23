@@ -253,6 +253,8 @@ internal static class Common
                 var n = e.Name;
                 var file = e is FileInfo;
                 if (file && n.EndsWith(".zip", PathCase)) continue;
+                // zip.folder inside dist ("dist/release"): the zips stay, so the folder holding them stays too
+                if (!file && (Same(Full(project.ZipFolder), Full(e.FullName)) || Under(Full(project.ZipFolder), Full(e.FullName)))) continue;
                 if (Same(n, MadeList) || made.Contains(n)
                     || (file && (BuildKinds.Any(k => n.EndsWith(k, PathCase)) || n.EndsWith(Zip.PartialSuffix, PathCase))))
                     delete.Add(e);
@@ -277,7 +279,6 @@ internal static class Common
         }
     }
 
-    /// <summary>Deletes the folder (when there) and makes it again, empty. Null when done, else why it failed.</summary>
     /// <summary>File.Copy, then clears a read-only mark the copy took from its source, so the next build can delete
     /// the copy from dist, stage or creations-out.</summary>
     public static void CopyFile(string from, string to, bool overwrite = false)
@@ -287,6 +288,7 @@ internal static class Common
         if (attributes.HasFlag(FileAttributes.ReadOnly)) File.SetAttributes(to, attributes & ~FileAttributes.ReadOnly);
     }
 
+    /// <summary>Deletes the folder (when there) and makes it again, empty. Null when done, else why it failed.</summary>
     public static string? Empty(string folder)
     {
         if (Log.FilePath is { } log && Under(Full(log), Full(folder)))

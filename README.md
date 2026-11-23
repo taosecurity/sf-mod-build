@@ -235,7 +235,7 @@ updates that zip. On Linux the folder is `$XDG_DATA_HOME/sf-mod-build` (or `~/.l
 Before the builder runs, `plugin` deletes what earlier builds made in dist: the names in dist's
 `.sf-mod-build-made` list (what the builder, sf-mod-build and your steps wrote last time), and every plugin (`.esm`,
 `.esp`, `.esl`) and archive (`.ba2`) at the top of dist, so don't keep plugins or archives of your own there (a
-master for `check --masters-dir`, say). Zips stay. When dist holds
+master for `check --masters-dir`, say). Zips stay, and so does a `zip.folder` inside dist. When dist holds
 anything else, such as a folder of old copies you keep there, `plugin` deletes nothing and stops with exit 2,
 naming each one:
 

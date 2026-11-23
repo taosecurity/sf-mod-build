@@ -89,6 +89,23 @@ public partial class PluginPackTests
     }
 
     [Fact]
+    public void AZipFolderInsideDistStaysForTheNextBuild()
+    {
+        var json = Json.Replace("\"builder\"", "\"zip\": { \"folder\": \"dist/release\" }, \"builder\"");
+        var (t, sfmod, game, env) = Setup(json);
+        using (t)
+        {
+            // what an earlier build's zip step left: the zip folder inside dist, holding the zip
+            t.File(Path.Combine("mod", "dist", "release", "MyMod-0.1.0.zip"), "an earlier build's zip");
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "an earlier build's plugin");
+            env.ExecResult = FakeDotnet;
+            var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Equal("an earlier build's zip", File.ReadAllText(Mod(t, "dist", "release", "MyMod-0.1.0.zip")));
+        }
+    }
+
+    [Fact]
     public void ADeleteThatFailsKeepsTheMadeListForTheNextRun()
     {
         if (!OperatingSystem.IsWindows()) return; // an open file blocks its delete only on Windows

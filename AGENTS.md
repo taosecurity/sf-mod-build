@@ -154,7 +154,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - `<stage>\Scripts\<Namespace>\*.pex` (default `.build\stage`), emptied and refilled by `compile`.
 - `<dist>\<Plugin>.esm` and `<dist>\<Plugin> - Main.ba2` (default `dist`). Before the builder runs, `plugin` deletes
   only what earlier builds made in dist: the names in `<dist>\.sf-mod-build-made` (what the builder, sf-mod-build
-  and the steps wrote last time; it never goes in the zip), plugins and `.ba2` files. Zips stay. Anything else
+  and the steps wrote last time; it never goes in the zip), plugins and `.ba2` files. Zips stay, and so does a `zip.folder` inside dist. Anything else
   there (a folder or file the person keeps in dist) stops `plugin` with exit 2, naming each one, and nothing is
   deleted: ask the person to move it out of dist. After an update from 0.3.0 or earlier the first build may name
   the builder's own extra files this way once; they can be deleted.
