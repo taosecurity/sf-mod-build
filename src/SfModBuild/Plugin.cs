@@ -121,8 +121,13 @@ internal static class Plugin
         return line;
     }
 
-    /// <summary>Arguments joined into one command line, each quoted as needed.</summary>
-    public static string Join(IEnumerable<string> args) => string.Join(" ", args.Select(Common.Quote));
+    /// <summary>Arguments joined into one command line, each quoted as needed (for cmd.exe's rules too when the
+    /// program is a .cmd or .bat file).</summary>
+    public static string Join(IEnumerable<string> args, string? program = null)
+    {
+        var batch = program != null && (program.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) || program.EndsWith(".bat", StringComparison.OrdinalIgnoreCase));
+        return string.Join(" ", args.Select(a => Common.Quote(a, batch)));
+    }
 
     /// <summary>What a build would run, with the placeholders still in (validate's "runs:" line), or null for a
     /// prebuilt plugin, which is only copied.</summary>
@@ -198,7 +203,7 @@ internal static class Plugin
         }
         else
         {
-            line = Join(args!);
+            line = Join(args!, exe);
             label = $"{Path.GetFileName(exe!)} (builder.command)";
         }
         stdout.WriteLine($"running the builder: {label}");

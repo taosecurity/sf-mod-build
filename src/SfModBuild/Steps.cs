@@ -55,7 +55,7 @@ internal static class Steps
                 stdout.WriteLine($"RESULT: {cannot} (steps.{list}[{i}]'s program \"{program}\" wasn't found on PATH. Fix: install it or add its folder to PATH, or give its path relative to {project.File}).");
                 return ExitCodes.BadInput;
             }
-            ready.Add(($"steps.{list}[{i}]", exe, Plugin.Join(commands[i].Skip(1).Select(a => SfModProject.Expand(a, values)))));
+            ready.Add(($"steps.{list}[{i}]", exe, Plugin.Join(commands[i].Skip(1).Select(a => SfModProject.Expand(a, values)), exe)));
         }
 
         var held = new HoldResult(stdout);

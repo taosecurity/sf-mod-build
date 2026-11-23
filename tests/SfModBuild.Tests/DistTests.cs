@@ -86,4 +86,24 @@ public partial class PluginPackTests
             Assert.False(Common.Shippable(Mod(t, "dist", Common.MadeList)));
         }
     }
+
+    [Fact]
+    public void ADeleteThatFailsKeepsTheMadeListForTheNextRun()
+    {
+        if (!OperatingSystem.IsWindows()) return; // an open file blocks its delete only on Windows
+        var (t, sfmod, game, env) = Setup();
+        using (t)
+        {
+            env.ExecResult = FakeDotnetWithIni;
+            Assert.Equal(ExitCodes.Ok, RunApp(env, out _, "plugin", sfmod, "--game", game));
+            string output;
+            // the plugin is open in another program (the CK or xEdit), so its delete fails
+            using (new FileStream(Mod(t, "dist", "MyMod.esm"), FileMode.Open, FileAccess.Read, FileShare.None))
+                Assert.NotEqual(ExitCodes.Ok, RunApp(env, out output, "plugin", sfmod, "--game", game));
+            Assert.Contains("close any program", output);
+            Assert.True(File.Exists(Mod(t, "dist", Common.MadeList)));
+            var code = RunApp(env, out output, "plugin", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+        }
+    }
 }

@@ -335,7 +335,9 @@ in dist, checking the archives) still builds with one `sf-mod-build build`.
   as `build`.
 - Each command is a list written like `builder.command`: the program first (a path relative to `sfmod.json`, or a
   bare name found on PATH), then its arguments, with the steps placeholders above. They run in order, in the
-  `sfmod.json` folder, without a shell, and each has 20 minutes to finish.
+  `sfmod.json` folder, without a shell, and each has 20 minutes to finish. A `.cmd` or `.bat` program (which
+  Windows runs through cmd.exe) gets each argument whole, spaces, `&`, `,` and `=` included, but cmd.exe still
+  expands `%NAME%` in it.
 - The programs (and the game, when a command uses `{data}`) are looked up before the builder or Archive2 runs, so a
   missing program stops `plugin` or `pack` before it does any work (exit 2).
 - A command that exits with anything but 0 stops `plugin` or `pack` (exit 1, and `build` stops there too), and the

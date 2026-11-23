@@ -74,6 +74,15 @@ public partial class PluginPackTests
     public void QuoteFollowsTheCommandLineRules(string arg, string expected) => Assert.Equal(expected, Common.Quote(arg));
 
     [Fact]
+    public void ABatchProgramGetsArgumentsWithCommaSemicolonOrEqualsQuoted()
+    {
+        string[] args = { @"--dist=C:\x", @"C:\Foo,Bar;x", "plain" };
+        Assert.Equal("\"--dist=C:\\x\" \"C:\\Foo,Bar;x\" plain", Plugin.Join(args, @"C:\mod\tools\check.CMD"));
+        Assert.Equal("\"--dist=C:\\x\" \"C:\\Foo,Bar;x\" plain", Plugin.Join(args, "check.bat"));
+        Assert.Equal(@"--dist=C:\x C:\Foo,Bar;x plain", Plugin.Join(args, "python.exe"));
+    }
+
+    [Fact]
     public void EmptyingInsideTheGameFolderIsRefused()
     {
         var game = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "g"));

@@ -261,7 +261,8 @@ internal static class Common
             if (foreign.Count > 0)
                 return $"the dist folder {folder} holds {string.Join(", ", foreign)}, which no earlier build listed as its own, and sf-mod-build never deletes what it didn't make, so nothing was deleted. "
                        + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of dist and run again (a build by sf-mod-build 0.3.0 or earlier left no list of what it made, so its builder's other files are named here once), or set \"dist\" in {project.File} to a folder of its own";
-            foreach (var e in delete)
+            // the made list goes last, so a delete that fails (a plugin open in the CK or xEdit) leaves it for the next run
+            foreach (var e in delete.OrderBy(e => Same(e.Name, MadeList)))
             {
                 // a link is removed, never what it points to
                 if (e is DirectoryInfo sub) { if (sub.LinkTarget != null) sub.Delete(); else sub.Delete(recursive: true); }
@@ -297,10 +298,13 @@ internal static class Common
     /// <summary>One argument for a Windows-style command line (the rules .NET and the C runtime use to split it):
     /// left bare when it has no space, tab or quote, else quoted, with backslashes before a quote (or before the
     /// closing quote) doubled and quotes escaped. An argument with a character cmd.exe reads as syntax (&amp;, |, &lt;,
-    /// &gt;, ^, parentheses) is quoted too, so a .cmd or .bat program gets it as one plain argument.</summary>
-    public static string Quote(string arg)
+    /// &gt;, ^, parentheses) is quoted too. With <paramref name="batch"/> (a .cmd or .bat program), so is one with a
+    /// character cmd.exe splits batch parameters on (, ; =), so the program gets it as one plain argument. (cmd.exe
+    /// still expands %NAME% inside quotes.)</summary>
+    public static string Quote(string arg, bool batch = false)
     {
-        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"', '&', '|', '<', '>', '^', '(', ')' }) < 0) return arg;
+        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"', '&', '|', '<', '>', '^', '(', ')' }) < 0
+            && !(batch && arg.IndexOfAny(new[] { ',', ';', '=' }) >= 0)) return arg;
         var sb = new System.Text.StringBuilder("\"");
         var backslashes = 0;
         foreach (var c in arg)
