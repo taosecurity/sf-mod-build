@@ -93,7 +93,8 @@ internal static class Pack
     /// sources and the assets, plus any given.</summary>
     static List<string> Keep(SfModProject project, params string[] more)
     {
-        var keep = new List<string> { project.Folder, project.Stage, project.Dist, Path.GetDirectoryName(project.BuilderProject)! };
+        var keep = new List<string> { project.Folder, project.Stage, project.Dist };
+        keep.AddRange(project.BuilderFolders);
         keep.AddRange(more);
         if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
         if (project.Assets != null)

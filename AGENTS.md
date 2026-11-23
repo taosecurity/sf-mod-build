@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.3.0. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.4.0. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -10,8 +10,9 @@ background; this file has what to run.
   with the Creation Kit's Archive2, writes a reproducible zip for Vortex or MO2, and runs sf-mod-check's `release`
   check on the zip.
 - `dotnet new sfmod` makes a starter mod that builds as is.
-- Use it when the person has (or wants) a mod whose plugin is made by a C# Mutagen builder. Don't use it for mods
-  made only in the Creation Kit or xEdit: there is no builder to run.
+- Use it when the person has (or wants) a mod whose plugin is made by a builder: a C# Mutagen builder project, or any
+  other program (`builder.command`). A plugin made by hand in the Creation Kit or xEdit can be shipped as it is with
+  `builder.prebuilt`, so the scripts, archives and zip still come from sf-mod-build.
 
 ## 2. Prerequisites (exact versions)
 
@@ -100,9 +101,16 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - `sfmod.json` (fields in the README, "The project file"). Paths in it are relative to its folder.
 - Papyrus sources under `scripts.source` (default `Scripts\Source\<Namespace>\*.psc`).
-- The builder project named in `builder.project`, run as
-  `dotnet run -c Release --project <builder> -- <builder.args>` with `{data} {dist} {scripts} {stage} {version}`
-  filled in as full paths.
+- The builder, exactly one of:
+  - `builder.project`, a .NET project run as `dotnet run -c Release --project <builder> -- <builder.args>`;
+  - `builder.command`, a list (program first) run as `<program> <its arguments> <builder.args>` in the sfmod.json
+    folder, without a shell; a program with a slash is relative to sfmod.json, a bare name is found on PATH;
+  - `builder.prebuilt`, a ready plugin file copied into dist under the `plugin` name (no `args`; `plugin` then needs
+    neither the game nor .NET).
+
+  `{data} {dist} {scripts} {stage} {version}` are filled in as full paths (in `builder.args` and in the command's
+  arguments). `builder.command` runs whatever it names: before building a mod the person didn't write, run
+  `sf-mod-build validate` and show them its `runs:` line, which lists each command the build would run.
 - Loose files under `assets.source` (and Xbox textures under `assets.xboxTextures`), when the project has them.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
@@ -159,5 +167,6 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
 - Don't hand-edit files in dist, stage or creations-out: the next build empties them.
-- Archives the builder writes itself aren't supported: their files go in the assets folder, so pack builds
+- Archives the builder writes itself into dist ship only when their file names are listed in `zip.archives` (since
+  0.3.0); they can't be used with `"xbox": true`. Otherwise put their files in the assets folder, so pack builds
   them into the mod's own archives.

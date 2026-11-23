@@ -278,4 +278,99 @@ public class PluginPackTests
             Assert.Empty(env.Execs);
         }
     }
+
+    // ---- plugin with builder.command and builder.prebuilt (0.4.0)
+
+    const string ProjectBuilder = "\"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\", \"{version}\", \"{scripts}\", \"--label\", \"two words\"] }";
+
+    /// <summary>A fake command builder: writes the plugin into the folder after --out.</summary>
+    static ProcessResult FakeCommand(string exe, string args, string workDir)
+    {
+        var m = Regex.Match(args, "--out (?<dist>\\S+)");
+        if (!m.Success) return new ProcessResult(3, "fake builder: no --out in " + args);
+        File.WriteAllText(Path.Combine(m.Groups["dist"].Value, "MyMod.esm"), "made-up plugin");
+        return new ProcessResult(0, "wrote MyMod.esm\n");
+    }
+
+    [Fact]
+    public void PluginRunsACommandFromAPathWithoutDotnet()
+    {
+        var (t, sfmod, game, env) = Setup(Json.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"tools/make.cmd\", \"--out\", \"{dist}\"], \"args\": [\"{version}\", \"two words\"] }"));
+        using (t)
+        {
+            t.File(Path.Combine("mod", "tools", "make.cmd"), "@echo off");
+            env.Vars["PATH"] = t.Dir("empty-bin"); // no dotnet: a command builder doesn't need it
+            env.ExecResult = FakeCommand;
+            var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            var (exe, args, wd) = Assert.Single(env.Execs);
+            Assert.Equal(Mod(t, "tools", "make.cmd"), exe);
+            Assert.Equal(Mod(t), wd);
+            Assert.Equal($"--out {Mod(t, "dist")} 0.1.0 \"two words\"", args);
+            Assert.True(File.Exists(Mod(t, "dist", "MyMod.esm")));
+            Assert.Contains("RESULT: OK", output);
+        }
+    }
+
+    [Fact]
+    public void PluginFindsABareCommandOnPath()
+    {
+        var (t, sfmod, game, env) = Setup(Json.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"python\", \"build.py\", \"{scripts}\"], \"args\": [\"--out\", \"{dist}\"] }"));
+        using (t)
+        {
+            t.File(Path.Combine("bin", Fake.ExeName("python")));
+            env.ExecResult = FakeCommand;
+            var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            var (exe, args, _) = Assert.Single(env.Execs);
+            Assert.Equal(Path.Combine(t.Path, "bin", Fake.ExeName("python")), exe);
+            Assert.Equal($"build.py {Mod(t, "Scripts", "Source")} --out {Mod(t, "dist")}", args);
+        }
+    }
+
+    [Fact]
+    public void PluginStopsWhenTheCommandIsNotOnPath()
+    {
+        var (t, sfmod, game, env) = Setup(Json.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"nosuchbuilder\"], \"args\": [\"{dist}\"] }"));
+        using (t)
+        {
+            var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("\"nosuchbuilder\" wasn't found on PATH", output);
+            Assert.Empty(env.Execs);
+        }
+    }
+
+    [Fact]
+    public void PluginFailsWhenTheCommandFails()
+    {
+        var (t, sfmod, game, env) = Setup(Json.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"dotnet\", \"run\", \"build.cs\", \"--\"], \"args\": [\"--out\", \"{dist}\"] }"));
+        using (t)
+        {
+            env.ExecResult = (_, _, _) => new ProcessResult(4, "build.cs(3,1): error: made-up failure\n");
+            var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
+            Assert.Equal(ExitCodes.Failed, code);
+            Assert.Contains("exited with code 4", output);
+            Assert.Contains("made-up failure", output);
+        }
+    }
+
+    [Fact]
+    public void PluginCopiesAPrebuiltPluginWithoutTheGameOrDotnet()
+    {
+        var (t, sfmod, _, env) = Setup(Json.Replace(ProjectBuilder, "\"builder\": { \"prebuilt\": \"../original/Their Mod.esm\" }"));
+        using (t)
+        {
+            t.File(Path.Combine("original", "Their Mod.esm"), "made-up ready plugin");
+            t.File(Path.Combine("mod", "dist", "stale.txt"), "old");
+            env.Vars["PATH"] = t.Dir("empty-bin");
+            var code = RunApp(env, out var output, "plugin", sfmod);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Empty(env.Execs);
+            Assert.False(File.Exists(Mod(t, "dist", "stale.txt")));
+            Assert.Equal("made-up ready plugin", File.ReadAllText(Mod(t, "dist", "MyMod.esm")));
+            Assert.Equal("made-up ready plugin", File.ReadAllText(Path.Combine(t.Path, "original", "Their Mod.esm")));
+            Assert.Contains("RESULT: OK, MyMod.esm copied into", output);
+        }
+    }
 }

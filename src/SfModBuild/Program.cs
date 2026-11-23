@@ -34,7 +34,8 @@ namespace SfModBuild
             "              then check the setup (Papyrus logging lines, CreationKitCustom.ini, unpacked script sources)\n" +
             "  validate    check a project file (sfmod.json) and show what a build would use\n" +
             "  compile     compile the mod's Papyrus scripts with the Creation Kit's compiler (never -release)\n" +
-            "  plugin      run the mod's Mutagen builder to write the plugin into dist\n" +
+            "  plugin      make the plugin in dist with the mod's builder: a .NET project (such as a Mutagen builder),\n" +
+            "              any command (builder.command), or a ready plugin copied in (builder.prebuilt)\n" +
             "  pack        pack the compiled scripts and loose files into the BA2s with the Creation Kit's Archive2\n" +
             "              (Main and Textures, and the _xbox ones for Creations)\n" +
             "  zip         write the mod's zip reproducibly (same files, same bytes)\n" +

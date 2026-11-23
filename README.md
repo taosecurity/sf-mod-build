@@ -104,7 +104,8 @@ One `sf-mod-build build` runs five steps in order and stops at the first one tha
 
 1. It compiles your Papyrus scripts with **your own** Creation Kit compiler (never with `-release`, so your
    `Debug.Trace` logging keeps working).
-2. It runs your mod's Mutagen builder (for example one made with BuildKit) to write the plugin.
+2. It runs your mod's Mutagen builder (for example one made with BuildKit) to write the plugin, or a command of your
+   own that writes it, or copies a plugin you already made.
 3. It packs the compiled scripts and your loose files (meshes, materials, sounds, terrain) into `<Plugin> - Main.ba2`
    and your textures into `<Plugin> - Textures.ba2`, with **your own** Creation Kit Archive2 (and the Xbox archives
    for Creations, if you ask for them).
@@ -133,7 +134,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.3.0.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.4.0.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -142,14 +143,14 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.3.0-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.3.0-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
+- **As a program**: download `sf-mod-build-0.4.0-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.4.0-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
   `sha256sum -c SHA256SUMS` in the download folder checks every file, from 0.2.1 on). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.3.0.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.4.0.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -215,7 +216,7 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build doctor [--game <folder>] [--checker <exe>] [--my-games <folder>]` | Finds the game, the Creation Kit's tools, .NET and the checker, and says how to get anything missing. Then it checks your setup (see [Setup checks](#setup-checks-in-doctor)). |
 | `sf-mod-build validate [<sfmod.json>]` | Checks the project file and prints what a build would use. Each problem names the field and the fix. |
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
-| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Runs the builder (`dotnet run -c Release --project <builder> -- <args>`) to write the plugin into dist (dist is emptied first). |
+| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. |
 | `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does a listed archive that isn't in dist. `zip.files` takes no archives. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
@@ -244,10 +245,12 @@ allowed.
     "namespaces": ["MYM"],                     // every .psc in <source>/<namespace>/ ...
     "files": ["MYM/MyQuestScript"]             // ... or an explicit list (namespace/name, .psc optional)
   },
-  "builder": {
-    "project": "Builder",                      // a folder holding one .csproj, or the .csproj itself (required)
-    "args": ["{data}", "{dist}", "{version}"]  // what the builder is given (required)
-  },
+  "builder": {                                 // exactly one of project, command and prebuilt (required)
+    "project": "Builder",                      // a folder holding one .csproj, or the .csproj itself, run with dotnet run
+    "command": ["python", "tools/build.py"],   // ... or any program and its first arguments (a list, never a shell)
+    "prebuilt": "Original/MyMod.esm",          // ... or a ready plugin, copied into dist under the plugin name
+    "args": ["{data}", "{dist}", "{version}"]  // what the builder is given (required with project and command,
+  },                                           // refused with prebuilt)
   "dist": "dist",                              // the plugin and the BA2 go here (default dist)
   "stage": ".build/stage",                     // compiled scripts go here (default .build/stage)
   "xbox": false,                               // also make the "_xbox" archives in creations-out
@@ -270,9 +273,32 @@ allowed.
 }
 ```
 
-Builder argument placeholders: `{data}` the game's Data folder, `{dist}`, `{scripts}` the (first) script source
-folder, `{stage}`, `{version}`; all paths are full paths. Zip name placeholders: `{name}`, `{plugin}` (without the
-extension), `{version}`.
+Builder argument placeholders (in `builder.args`, and in `builder.command` after the program): `{data}` the game's
+Data folder, `{dist}`, `{scripts}` the (first) script source folder, `{stage}`, `{version}`; all paths are full
+paths. Zip name placeholders: `{name}`, `{plugin}` (without the extension), `{version}`.
+
+### Other kinds of builder
+
+The starter project's builder is a .NET project (`builder.project`). Two other kinds are allowed; give exactly one
+of the three.
+
+- `"command"`: any program that writes the plugin, as a list: the program first, then its first arguments.
+  `builder.args` are added after them. Examples: `["dotnet", "run", "build.cs", "--"]` for a one-file C# program,
+  `["python", "tools/build.py"]` for a Python builder, or a script of your own that runs a chain of tools. A
+  program with a `/` or `\` in it is a path relative to `sfmod.json`; a bare name such as `python` is looked up on
+  PATH. The command runs in the `sfmod.json` folder, without a shell (no `&&`, pipes or wildcards), and has 20
+  minutes to finish. .NET isn't needed for this kind unless your command uses it.
+- `"prebuilt"`: a plugin that is already made (in the Creation Kit, or by hand). `plugin` copies it into dist under
+  the `plugin` name; it may sit outside the mod's folder and is only read. It takes no `args`, and `plugin` needs
+  neither the game nor .NET for it.
+
+```jsonc
+"builder": { "command": ["python", "tools/build.py", "--out", "{dist}"], "args": ["{version}"] }
+```
+
+**Only build an sfmod.json you trust.** `builder.command` runs the program it names, just as `builder.project`
+runs the builder project's code. Before you build a mod someone else made, run `sf-mod-build validate` and read
+its `runs:` line, which shows each command a build would run.
 
 `validate` refuses a plugin name that ends in an official plugin's name (such as `-ShatteredSpace.esm`) or starts
 with `BlueprintShips-`, because the game removes such names from Plugins.txt and they stop loading. It warns

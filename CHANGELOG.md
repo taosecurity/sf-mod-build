@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.0 (not released yet)
+
+### What's new
+
+- Two more kinds of builder in sfmod.json. Give exactly one of `builder.project` (a .NET project, as before), `builder.command` or `builder.prebuilt`; `validate` reports none or two as a PROBLEM.
+- `builder.command` runs any program that writes the plugin: a list with the program first and its first arguments after it, such as `["python", "tools/build.py"]` or `["dotnet", "run", "build.cs", "--"]`. `builder.args` are added after it, and the builder placeholders work in both. A program with a `/` or `\` is a path relative to sfmod.json; a bare name is found on PATH. It runs in the sfmod.json folder without a shell, and doesn't need .NET.
+- `builder.prebuilt` copies a ready plugin (made in the Creation Kit or by hand) into dist under the `plugin` name. It takes no `args`, and `plugin` needs neither the game nor .NET for it.
+- `validate` now prints a `runs:` line with the command a build would run. Read it before you build a mod someone else made: `builder.command` runs whatever program it names.
+
+### Example
+
+A made-up mod whose builder is a Python script, with `"builder": { "command": ["python", "tools/build.py", "--out", "{dist}"], "args": ["{version}"] }` (folder names are shortened):
+
+    > sf-mod-build validate
+    ...
+    builder:  command python
+              args {version}
+    runs:     python tools/build.py --out {dist} {version}
+    ...
+    RESULT: OK
+
+    > sf-mod-build plugin
+    running the builder: python.exe (builder.command)
+    built    C:\Mods\MyMod\dist\MyMod.esm (20 bytes)
+    RESULT: OK, MyMod.esm built into C:\Mods\MyMod\dist
+
+and a mod with `"builder": { "prebuilt": "Original/MyOtherMod.esm" }`:
+
+    > sf-mod-build plugin
+    copied   C:\Mods\MyOtherMod\Original\MyOtherMod.esm to C:\Mods\MyOtherMod\dist\MyOtherMod.esm (21 bytes)
+    RESULT: OK, MyOtherMod.esm copied into C:\Mods\MyOtherMod\dist
+
+### Fixed
+
+- AGENTS.md no longer says that archives your builder writes aren't supported: they have shipped through `zip.archives` since 0.3.0.
+
 ## 0.3.0 (2026-11-23)
 
 ### What's new

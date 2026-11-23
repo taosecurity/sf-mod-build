@@ -2,7 +2,7 @@ using Xunit;
 
 namespace SfModBuild.Tests;
 
-public class SfModProjectTests
+public partial class SfModProjectTests
 {
     /// <summary>A made-up mod folder: one script, a builder project, README and LICENSE.</summary>
     static TempDir Mod()
@@ -480,5 +480,96 @@ public class ValidateCommandTests
     {
         var o = new StringWriter();
         Assert.Equal(2, App.Run(new[] { "validate", "a.json", "b.json" }, new FakeHostEnv(), o));
+    }
+}
+
+public partial class SfModProjectTests
+{
+    // ---- builder kinds (0.4.0): command and prebuilt
+
+    const string ProjectBuilder = "\"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\", \"{version}\"] }";
+
+    [Fact]
+    public void CommandBuilderWithABareProgramLoads()
+    {
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"python\", \"tools/build.py\", \"--out\", \"{dist}\"], \"args\": [\"{version}\"] }"));
+        Assert.True(p != null, All(problems));
+        Assert.Empty(problems);
+        Assert.Null(p!.BuilderProject);
+        Assert.Equal("command", p.BuilderKind);
+        Assert.Equal(new[] { "python", "tools/build.py", "--out", "{dist}" }, p.BuilderCommand);
+        Assert.Equal(new[] { "{version}" }, p.BuilderArgs);
+        Assert.Empty(p.BuilderFolders);
+    }
+
+    [Fact]
+    public void CommandBuilderWithAPathProgramIsMadeFull()
+    {
+        using var t = Mod();
+        t.File(Path.Combine("tools", "make plugin.cmd"), "@echo off");
+        var (p, problems) = Load(t, Good.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"tools/make plugin.cmd\"], \"args\": [\"{dist}\"] }"));
+        Assert.True(p != null, All(problems));
+        Assert.Equal(Path.Combine(t.Path, "tools", "make plugin.cmd"), p!.BuilderCommand![0]);
+        Assert.Equal(new[] { Path.Combine(t.Path, "tools") }, p.BuilderFolders);
+    }
+
+    [Theory]
+    [InlineData("\"command\": [\"tools/nope.py\"], \"args\": []", "builder.command[0]", "isn't there")]
+    [InlineData("\"command\": [\"{dist}/x.exe\"], \"args\": []", "builder.command[0]", "placeholder")]
+    [InlineData("\"command\": \"python build.py\", \"args\": []", "builder.command", "not a list")]
+    [InlineData("\"command\": [], \"args\": []", "builder.command", "empty")]
+    [InlineData("\"command\": [\"python\", \"{dsit}\"], \"args\": []", "builder.command[1]", "isn't a placeholder")]
+    [InlineData("\"command\": [\"python\"]", "builder.args", "missing")]
+    [InlineData("\"args\": []", "builder", "names no builder")]
+    [InlineData("\"project\": \"Builder\", \"command\": [\"python\"], \"args\": []", "builder", "both \"project\" and \"command\"")]
+    [InlineData("\"prebuilt\": \"Original/MyMod.esm\", \"args\": [\"{dist}\"]", "builder.args", "copied, not run")]
+    [InlineData("\"prebuilt\": \"Original/Nope.esm\"", "builder.prebuilt", "isn't there")]
+    [InlineData("\"prebuilt\": \"README.md\"", "builder.prebuilt", "doesn't end in .esm")]
+    [InlineData("\"prebuilt\": \"dist/Old.esm\"", "builder.prebuilt", "which the build empties")]
+    public void BadBuilderKindsAreProblems(string builder, string field, string words)
+    {
+        using var t = Mod();
+        t.File(Path.Combine("Original", "MyMod.esm"), "made-up plugin");
+        t.File(Path.Combine("dist", "Old.esm"), "made-up plugin");
+        var (p, problems) = Load(t, Good.Replace(ProjectBuilder, "\"builder\": { " + builder + " }"));
+        Assert.Null(p);
+        Assert.Contains(problems, x => x.Field == field && x.Problem.Contains(words));
+    }
+
+    [Fact]
+    public void PrebuiltBuilderLoadsWithoutArgs()
+    {
+        using var t = Mod();
+        var original = t.File(Path.Combine("Original", "Their Mod.esm"), "made-up plugin");
+        var (p, problems) = Load(t, Good.Replace(ProjectBuilder, "\"builder\": { \"prebuilt\": \"Original/Their Mod.esm\" }"));
+        Assert.True(p != null, All(problems));
+        Assert.Empty(problems);
+        Assert.Equal("prebuilt", p!.BuilderKind);
+        Assert.Equal(original, p.BuilderPrebuilt);
+        Assert.Empty(p.BuilderArgs);
+    }
+
+    [Fact]
+    public void ValidatePrintsWhatEachBuilderRuns()
+    {
+        using var t = Mod();
+        var file = t.File("sfmod.json", Good);
+        var o = new StringWriter();
+        Assert.Equal(0, App.Run(new[] { "validate", file }, new FakeHostEnv(), o));
+        Assert.Contains($"runs:     dotnet run -c Release --project {Path.Combine(t.Path, "Builder", "Builder.csproj")} -- {{data}} {{dist}} {{version}}", o.ToString());
+
+        File.WriteAllText(file, Good.Replace(ProjectBuilder, "\"builder\": { \"command\": [\"python\", \"tools/build.py\", \"two words\"], \"args\": [\"{dist}\"] }"));
+        o = new StringWriter();
+        Assert.Equal(0, App.Run(new[] { "validate", file }, new FakeHostEnv(), o));
+        Assert.Contains("builder:  command python", o.ToString());
+        Assert.Contains("runs:     python tools/build.py \"two words\" {dist}", o.ToString());
+
+        t.File(Path.Combine("Original", "MyMod.esm"), "made-up plugin");
+        File.WriteAllText(file, Good.Replace(ProjectBuilder, "\"builder\": { \"prebuilt\": \"Original/MyMod.esm\" }"));
+        o = new StringWriter();
+        Assert.Equal(0, App.Run(new[] { "validate", file }, new FakeHostEnv(), o));
+        Assert.Contains($"builder:  prebuilt {Path.Combine(t.Path, "Original", "MyMod.esm")}, copied into dist as MyMod.esm", o.ToString());
+        Assert.DoesNotContain("runs:", o.ToString());
     }
 }

@@ -151,7 +151,8 @@ internal static class Compile
     /// builder, or is a drive root), or null when it is safe.</summary>
     public static string? UnsafeStage(SfModProject project, IEnumerable<string>? gameFolders = null)
     {
-        var keep = new List<string> { project.Folder, project.Dist, project.CreationsOut, Path.GetDirectoryName(project.BuilderProject)! };
+        var keep = new List<string> { project.Folder, project.Dist, project.CreationsOut };
+        keep.AddRange(project.BuilderFolders);
         if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
         return Common.UnsafeToEmpty("stage", project.Stage, project.Folder, keep, gameFolders);
     }

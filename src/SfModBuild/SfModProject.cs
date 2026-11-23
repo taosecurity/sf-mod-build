@@ -11,10 +11,12 @@
 //       "namespaces": ["MYM"],                     every .psc in <source>/<namespace>/ ...
 //       "files": ["MYM/MyQuestScript"]             ... or an explicit list (namespace/name, .psc optional)
 //     },
-//     "builder": {
-//       "project": "Builder",                      a folder holding one .csproj, or the .csproj itself (required)
-//       "args": ["{data}", "{dist}", "{version}"]  what the builder is given; placeholders below (required)
-//     },
+//     "builder": {                                 exactly one of project, command and prebuilt (required)
+//       "project": "Builder",                      a folder holding one .csproj, or the .csproj itself, run with dotnet run
+//       "command": ["python", "tools/build.py"],   ... or any program and its first arguments (a list, never a shell)
+//       "prebuilt": "Original/MyMod.esm",          ... or a ready plugin, copied into dist under the plugin name
+//       "args": ["{data}", "{dist}", "{version}"]  what the builder is given; placeholders below (required with
+//     },                                           project and command, refused with prebuilt)
 //     "dist": "dist",                              the plugin and the BA2 go here (default dist)
 //     "stage": ".build/stage",                     compiled scripts go here (default .build/stage)
 //     "xbox": false,                               also make "<plugin> - Main_xbox.ba2" in creations-out (default false)
@@ -36,8 +38,14 @@
 //     }
 //   }
 //
-// Builder placeholders: {data} the game's Data folder, {dist}, {scripts} the (first) script source folder, {stage},
-// {version}. Zip name and zip file name placeholders: {name}, {plugin} (without extension), {version}.
+// Builder placeholders (in builder.args and in builder.command after the program): {data} the game's Data folder,
+// {dist}, {scripts} the (first) script source folder, {stage}, {version}. Zip name and zip file name placeholders:
+// {name}, {plugin} (without extension), {version}.
+//
+// builder.command runs a program named in this file, so sfmod.json is trusted input, like the builder project itself:
+// read a downloaded mod's sfmod.json (validate prints every command as a "runs:" line) before building it. A program
+// with a / or \ in it is a path relative to this file's folder; a bare name is looked up on PATH. The working folder
+// is this file's folder.
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -73,8 +81,23 @@ internal sealed class SfModProject
     /// <summary>The archives the build puts in dist, in the order pack makes them.</summary>
     public IEnumerable<string> ArchiveNames =>
         (HasMainArchive ? new[] { Ba2Name } : Array.Empty<string>()).Concat(HasTexturesArchive ? new[] { TexturesBa2Name } : Array.Empty<string>());
-    public required string BuilderProject { get; init; }
+    /// <summary>builder.project: the .csproj run with dotnet run, or null when another kind of builder is used.</summary>
+    public string? BuilderProject { get; init; }
+    /// <summary>builder.command: the program (a full path when it was given as a path, else the bare name looked up
+    /// on PATH) and its leading arguments, or null.</summary>
+    public IReadOnlyList<string>? BuilderCommand { get; init; }
+    /// <summary>builder.prebuilt: the full path of a ready plugin copied into dist, or null.</summary>
+    public string? BuilderPrebuilt { get; init; }
+    /// <summary>builder.args (empty with prebuilt).</summary>
     public required IReadOnlyList<string> BuilderArgs { get; init; }
+    /// <summary>"project", "command" or "prebuilt".</summary>
+    public string BuilderKind => BuilderProject != null ? "project" : BuilderCommand != null ? "command" : "prebuilt";
+    /// <summary>The folders holding the builder (its project, its program when given as a path, or the ready plugin):
+    /// never emptied and never packed.</summary>
+    public IEnumerable<string> BuilderFolders =>
+        BuilderProject != null ? new[] { Path.GetDirectoryName(BuilderProject)! }
+        : BuilderCommand != null ? (Path.IsPathRooted(BuilderCommand[0]) ? new[] { Path.GetDirectoryName(BuilderCommand[0])! } : Array.Empty<string>())
+        : new[] { Path.GetDirectoryName(BuilderPrebuilt!)! };
     public required string Dist { get; init; }
     public required string Stage { get; init; }
     public bool Xbox { get; init; }
@@ -137,7 +160,7 @@ internal sealed class SfModProject
     // Left out without a word: system clutter and dot files such as .gitkeep.
     static readonly string[] SkippedAssetNames = { "Thumbs.db", "desktop.ini" };
     static readonly string[] ScriptsFields = { "source", "namespaces", "files" };
-    static readonly string[] BuilderFields = { "project", "args" };
+    static readonly string[] BuilderFields = { "project", "command", "prebuilt", "args" };
     static readonly string[] ZipFields = { "name", "folder", "files", "archives" };
     static readonly string[] CheckFields = { "checker", "required", "args" };
     public static readonly string[] BuilderPlaceholders = { "data", "dist", "scripts", "stage", "version" };
@@ -234,7 +257,7 @@ internal sealed class SfModProject
                 Error("version", $"\"{version}\" isn't a version made of numbers and dots.", "write it like \"0.1.0\" or \"1.2\" (up to four numbers).");
 
             var scripts = Scripts(root);
-            var (builderProject, builderArgs) = Builder(root);
+            var builder = Builder(root);
             var dist = Folder(root, "dist", "dist");
             var stage = Folder(root, "stage", Path.Combine(".build", "stage"));
             if (dist != null && stage != null && SamePath(dist, stage))
@@ -252,26 +275,37 @@ internal sealed class SfModProject
                 if (path != null && !SamePath(path, folder) && !IsUnder(path, folder))
                     Error(field, $"{path} isn't inside the mod's folder {folder}, and every build empties it.",
                         $"give a folder inside the mod's folder, relative to sfmod.json, for example \"{(field == "stage" ? ".build/stage" : field == "dist" ? "dist" : "creations-out")}\".");
+            // a builder file inside a folder the tool empties would be deleted before it is used
+            if (builder != null)
+                foreach (var (bField, bFile) in new[] { ("builder.command[0]", builder.Command is { } c && Path.IsPathRooted(c[0]) ? c[0] : null), ("builder.prebuilt", builder.Prebuilt) })
+                    if (bFile != null)
+                        foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
+                            if (path != null && IsUnder(bFile, path))
+                                Error(bField, $"{bFile} is inside {field} ({path}), which the build empties before it is used.",
+                                    "keep it in a folder of its own, outside dist, stage and creations-out.");
             var assetsOk = true;
             AssetsSection? assets = null;
             if (dist != null && stage != null && creationsOut != null)
             {
                 var keep = new List<(string, string)> { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) };
                 var hold = new List<(string, string)>();
-                if (builderProject != null) hold.Add(("the builder", Path.GetDirectoryName(builderProject)!));
+                if (builder?.Project != null) hold.Add(("the builder", Path.GetDirectoryName(builder.Project)!));
+                if (builder?.Command is { } cmd && Path.IsPathRooted(cmd[0])) hold.Add(("the builder program", cmd[0]));
+                if (builder?.Prebuilt != null) hold.Add(("the prebuilt plugin", builder.Prebuilt));
                 if (scripts != null) hold.AddRange(scripts.Sources.Select(s => ("a script source folder", s)));
                 assets = Assets(root, xbox, keep, hold, out assetsOk);
             }
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
             var (checker, checkRequired, checkArgs) = Check(root);
 
-            if (plugin == null || name == null || version == null || builderProject == null || builderArgs == null || dist == null
+            if (plugin == null || name == null || version == null || builder == null || dist == null
                 || stage == null || creationsOut == null || !assetsOk || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
                 File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts, Assets = assets,
-                BuilderProject = builderProject, BuilderArgs = builderArgs, Dist = dist, Stage = stage, Xbox = xbox,
+                BuilderProject = builder.Project, BuilderCommand = builder.Command, BuilderPrebuilt = builder.Prebuilt,
+                BuilderArgs = builder.Args, Dist = dist, Stage = stage, Xbox = xbox,
                 CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
@@ -602,19 +636,119 @@ internal sealed class SfModProject
             else sources.Add(full);
         }
 
-        (string?, List<string>?) Builder(JsonElement root)
+        sealed record BuilderSpec(string? Project, List<string>? Command, string? Prebuilt, List<string> Args);
+
+        /// <summary>The builder section: exactly one of project, command and prebuilt, and args (none with prebuilt).
+        /// Null when it has a PROBLEM.</summary>
+        BuilderSpec? Builder(JsonElement root)
         {
             if (!root.TryGetProperty("builder", out var b))
             {
-                Error("builder", "it is missing.", "add \"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\", \"{version}\"] } (the Mutagen project that writes the plugin).");
-                return (null, null);
+                Error("builder", "it is missing.", "add \"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\", \"{version}\"] } (the Mutagen project that writes the plugin), or use \"command\" or \"prebuilt\" instead of \"project\".");
+                return null;
             }
             if (b.ValueKind != JsonValueKind.Object)
             {
                 Error("builder", $"it is a {Kind(b)}, not an object.", "write it like \"builder\": { \"project\": \"Builder\", \"args\": [\"{data}\", \"{dist}\"] }.");
-                return (null, null);
+                return null;
             }
+            var before = problems.Count(x => !x.IsWarning);
             Fields(b, "builder.", BuilderFields);
+            var kinds = new[] { "project", "command", "prebuilt" }.Where(k => b.TryGetProperty(k, out var v) && v.ValueKind != JsonValueKind.Null).ToList();
+            if (kinds.Count == 0)
+            {
+                Error("builder", "it names no builder.", "give exactly one of \"project\" (a .NET builder project), \"command\" (a program and its arguments, as a list) or \"prebuilt\" (a ready plugin file to copy).");
+                return null;
+            }
+            if (kinds.Count > 1)
+            {
+                Error("builder", $"it gives both {string.Join(" and ", kinds.Select(k => $"\"{k}\""))}.", "keep exactly one of \"project\", \"command\" and \"prebuilt\".");
+                return null;
+            }
+            string? project = null, prebuilt = null;
+            List<string>? command = null;
+            if (kinds[0] == "project") project = BuilderProject(b);
+            else if (kinds[0] == "command") command = BuilderCommand(b);
+            else prebuilt = BuilderPrebuilt(b);
+
+            var args = new List<string>();
+            if (kinds[0] == "prebuilt")
+            {
+                if (b.TryGetProperty("args", out var pa) && pa.ValueKind != JsonValueKind.Null)
+                    Error("builder.args", "a prebuilt plugin is copied, not run, so it takes no arguments.", "remove builder.args, or use \"command\" to run a program that writes the plugin.");
+            }
+            else if (BuilderArgs(b) is { } list) args = list;
+            else return null;
+            return problems.Count(x => !x.IsWarning) == before ? new BuilderSpec(project, command, prebuilt, args) : null;
+        }
+
+        /// <summary>builder.command: a list, the program first. A program with a slash is a file relative to sfmod.json
+        /// (made a full path); a bare name stays as it is and is looked up on PATH when the plugin is built.</summary>
+        List<string>? BuilderCommand(JsonElement b)
+        {
+            var c = b.GetProperty("command");
+            const string example = "[\"python\", \"tools/build.py\"]";
+            if (c.ValueKind != JsonValueKind.Array)
+            {
+                Error("builder.command", $"it is a {Kind(c)}, not a list.", $"write the program and its arguments as a list, for example {example} (it is never run through a shell).");
+                return null;
+            }
+            var raw = StringList(b, "command", "builder.command", example);
+            if (raw.Count != c.GetArrayLength()) return null;
+            if (raw.Count == 0)
+            {
+                Error("builder.command", "the list is empty.", $"give the program first, then its arguments, for example {example}.");
+                return null;
+            }
+            var program = raw[0];
+            if (program.Contains('{') || program.Contains('}'))
+            {
+                Error("builder.command[0]", $"\"{program}\" is the program, which can't hold a placeholder.", "give the program's name (found on PATH) or its path relative to sfmod.json, and put placeholders in the arguments after it.");
+                return null;
+            }
+            if (program.Contains('/') || program.Contains('\\'))
+            {
+                var full = PathOf(program, "builder.command[0]");
+                if (full == null) return null;
+                if (NamesFolder(program) || !System.IO.File.Exists(full))
+                {
+                    Error("builder.command[0]", Directory.Exists(full) ? $"{full} is a folder, not a program." : $"{full} isn't there.",
+                        "give the program's path relative to sfmod.json, or a bare name such as \"python\" to find it on PATH.");
+                    return null;
+                }
+                program = full;
+            }
+            else if (!GoodFileName(program))
+            {
+                Error("builder.command[0]", $"\"{program}\" isn't a program name.", "give a program found on PATH, such as \"python\" or \"dotnet\", or a path relative to sfmod.json.");
+                return null;
+            }
+            var ok = true;
+            for (var i = 1; i < raw.Count; i++) ok &= Placeholders(raw[i], $"builder.command[{i}]", BuilderPlaceholders);
+            if (!ok) return null;
+            return raw.Skip(1).Prepend(program).ToList();
+        }
+
+        /// <summary>builder.prebuilt: a plugin file that already exists (it may be outside the mod; it is only read).</summary>
+        string? BuilderPrebuilt(JsonElement b)
+        {
+            var value = String(b, "prebuilt", required: true, example: "\"Original/MyMod.esm\"", field: "builder.prebuilt");
+            if (value == null || PathOf(value, "builder.prebuilt") is not { } full) return null;
+            if (!PluginExtensions.Contains(Path.GetExtension(full), StringComparer.OrdinalIgnoreCase))
+            {
+                Error("builder.prebuilt", $"\"{value}\" doesn't end in .esm, .esp or .esl.", "give the ready plugin file, for example \"Original/MyMod.esm\".");
+                return null;
+            }
+            if (NamesFolder(value) || !System.IO.File.Exists(full))
+            {
+                Error("builder.prebuilt", Directory.Exists(full) ? $"{full} is a folder, not a plugin file." : $"{full} isn't there.", "give the ready plugin file, relative to sfmod.json.");
+                return null;
+            }
+            return full;
+        }
+
+        string? BuilderProject(JsonElement b)
+        {
             string? project = null;
             var value = String(b, "project", required: true, example: "\"Builder\"", field: "builder.project");
             if (value != null && PathOf(value, "builder.project") is { } full)
@@ -630,6 +764,11 @@ internal sealed class SfModProject
                 else if (NamesFolder(value) && System.IO.File.Exists(full)) Error("builder.project", $"\"{value}\" ends in a slash, so it names a folder, not the .csproj.", "give the .csproj without the slash, or the builder's folder.");
                 else Error("builder.project", $"{full} isn't there (or isn't a .csproj file).", "give the builder's folder or its .csproj, relative to sfmod.json.");
             }
+            return project;
+        }
+
+        List<string>? BuilderArgs(JsonElement b)
+        {
             List<string>? args = null;
             if (!b.TryGetProperty("args", out var a))
                 Error("builder.args", "it is missing.", "list what your builder expects, in its order, for example [\"{data}\", \"{dist}\", \"{version}\"]. Look at its Program.cs or the old build script's dotnet run line.");
@@ -651,11 +790,13 @@ internal sealed class SfModProject
                     }
                     i++;
                 }
-                if (args.Count > 0 && !args.Any(x => x.Contains("{dist}")))
+                var command = b.TryGetProperty("command", out var c) && c.ValueKind == JsonValueKind.Array
+                    ? c.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).Skip(1) : Enumerable.Empty<string>();
+                if (args.Count > 0 && !args.Concat(command).Any(x => x.Contains("{dist}")))
                     Warn("builder.args", "no argument holds {dist}, so the builder isn't told where to write the plugin.",
                         "add \"{dist}\" where your builder expects its output folder, unless it always writes to dist by itself.");
             }
-            return (project, args);
+            return args;
         }
 
         (string?, string?, List<(string, string)>?, List<string>?) Zip(JsonElement root, string? name, string? plugin, string? version)

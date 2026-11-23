@@ -6,7 +6,8 @@ internal static class Validate
 {
     public const string Usage =
         "usage: sf-mod-build validate [<sfmod.json or its folder>] [--verbose] [--log <file>]\n" +
-        "  checks the project file (default: sfmod.json in the current folder) and prints what a build would use";
+        "  checks the project file (default: sfmod.json in the current folder) and prints what a build would use,\n" +
+        "  with each command it would run on a \"runs:\" line (read them before building a downloaded mod)";
 
     public static readonly ArgSpec Spec = new(Array.Empty<string>(), Array.Empty<string>(), MaxPositionals: 1);
 
@@ -60,8 +61,15 @@ internal static class Validate
             if (p.Scripts.Namespaces.Count > 0) o.WriteLine($"          namespaces {string.Join(", ", p.Scripts.Namespaces)}");
             if (p.Scripts.Files.Count > 0) o.WriteLine($"          files {string.Join(", ", p.Scripts.Files)}");
         }
-        o.WriteLine($"builder:  {p.BuilderProject}");
-        o.WriteLine($"          args {string.Join(" ", p.BuilderArgs)}");
+        if (p.BuilderPrebuilt != null)
+            o.WriteLine($"builder:  prebuilt {p.BuilderPrebuilt}, copied into dist as {p.Plugin}");
+        else
+        {
+            o.WriteLine(p.BuilderProject != null ? $"builder:  {p.BuilderProject}" : $"builder:  command {p.BuilderCommand![0]}");
+            o.WriteLine($"          args {string.Join(" ", p.BuilderArgs)}");
+            // every program a build would run, so a downloaded mod's sfmod.json can be read before it is built
+            o.WriteLine($"runs:     {Plugin.Shown(p)}");
+        }
         o.WriteLine($"dist:     {p.Dist}");
         o.WriteLine($"stage:    {p.Stage}");
         var xboxArchives = (p.HasMainArchive ? new[] { p.XboxBa2Name } : Array.Empty<string>())
