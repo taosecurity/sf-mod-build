@@ -296,10 +296,11 @@ internal static class Common
 
     /// <summary>One argument for a Windows-style command line (the rules .NET and the C runtime use to split it):
     /// left bare when it has no space, tab or quote, else quoted, with backslashes before a quote (or before the
-    /// closing quote) doubled and quotes escaped.</summary>
+    /// closing quote) doubled and quotes escaped. An argument with a character cmd.exe reads as syntax (&amp;, |, &lt;,
+    /// &gt;, ^, parentheses) is quoted too, so a .cmd or .bat program gets it as one plain argument.</summary>
     public static string Quote(string arg)
     {
-        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"' }) < 0) return arg;
+        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"', '&', '|', '<', '>', '^', '(', ')' }) < 0) return arg;
         var sb = new System.Text.StringBuilder("\"");
         var backslashes = 0;
         foreach (var c in arg)

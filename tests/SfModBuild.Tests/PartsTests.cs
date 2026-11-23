@@ -291,6 +291,25 @@ public class PartsTests
         }
     }
 
+    [Fact]
+    public void PackKeepsAPartsArchiveThatZipArchivesLists()
+    {
+        // a records-only part whose archive the builder writes on purpose, the fix the stray-archive message gives
+        var (t, sfmod, game, env) = Setup(Json(Patch, "\n  \"zip\": { \"archives\": [\"MyMod-Patch - Main.ba2\"] },"));
+        using (t)
+        {
+            Assert.Empty(Load(sfmod, out _).Where(p => !p.IsWarning));
+            t.File(Path.Combine("mod", ".build", "stage", "Scripts", "MYM", "Alpha.pex"), "pex");
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "MyMod-Patch.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "MyMod-Patch - Main.ba2"), "the builder's own archive");
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.True(File.Exists(Mod(t, "dist", "MyMod-Patch - Main.ba2")), output);
+            Assert.DoesNotContain("deleted", output);
+        }
+    }
+
     // ---- zip
 
     [Fact]

@@ -68,6 +68,9 @@ public partial class PluginPackTests
     [InlineData("say \"hi\"", "\"say \\\"hi\\\"\"")]
     [InlineData(@"a\\""b", "\"a\\\\\\\\\\\"b\"")]
     [InlineData("", "\"\"")]
+    [InlineData(@"C:\Mods\R&D\dist", "\"C:\\Mods\\R&D\\dist\"")]
+    [InlineData("a|b", "\"a|b\"")]
+    [InlineData("(x)^<y>", "\"(x)^<y>\"")]
     public void QuoteFollowsTheCommandLineRules(string arg, string expected) => Assert.Equal(expected, Common.Quote(arg));
 
     [Fact]

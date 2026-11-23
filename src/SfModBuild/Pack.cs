@@ -456,8 +456,10 @@ internal static class Pack
         {
             try
             {
+                // an archive zip.archives lists is the builder's own (a records-only part's, say): never deleted here
                 foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name }.Concat(project.Parts.Select(x => x.Ba2Name))
-                             .Concat(project.Archives.Select(a => a.Name)).Distinct())
+                             .Concat(project.Archives.Select(a => a.Name)).Distinct()
+                             .Where(n => !project.ZipArchives.Contains(n, StringComparer.OrdinalIgnoreCase)))
                     foreach (var path in Common.FilesNamed(project.Dist, name))
                         // the archive this build makes is deleted at its exact name by Archive just before Archive2
                         // writes it (so a link there is removed, never written through)
