@@ -346,7 +346,9 @@ has them spelled in other letter case.
 - An archive your builder writes itself has to be listed in `zip.archives` (file names in dist, for example
   `["MyMod - Extra.ba2"]`) to ship. `zip` stops, naming the file, when a listed archive isn't in dist. It can't be
   one of the names `pack` uses (`<plugin> - Main.ba2`, `<plugin> - Textures.ba2` and their `_xbox` versions), even
-  for a mod whose `pack` makes no archive. sf-mod-build doesn't check what is inside it. `zip.archives` can't be
+  for a mod whose `pack` makes no archive. Name it after the plugin (`<plugin> - <name>.ba2`), because the game
+  loads only archives whose names start that way; sf-mod-build doesn't check the name beyond that list, or what
+  is inside the archive. `zip.archives` can't be
   used with `"xbox": true` (`validate` reports it as a PROBLEM), because `pack` can't make the Xbox copies of
   archives your builder writes.
 - With `"xbox": true` and nothing left to pack, `pack` deletes only the mod's old archives from creations-out; the
