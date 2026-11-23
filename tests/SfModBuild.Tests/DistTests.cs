@@ -30,7 +30,7 @@ public partial class PluginPackTests
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains("\"notes.txt\"", output);
             Assert.Contains("\"superseded-2026-11-04\" (a folder)", output);
-            Assert.Contains("sf-mod-build deletes only the plugins and archives in dist and what earlier builds made there", output);
+            Assert.Contains("sf-mod-build deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there", output);
             Assert.DoesNotContain("never deletes what it didn't make", output);
             Assert.Contains("Fix: move them out of dist", output);
             Assert.Empty(env.Execs);
@@ -38,6 +38,31 @@ public partial class PluginPackTests
             Assert.Equal("the user's notes", File.ReadAllText(Mod(t, "dist", "notes.txt")));
             Assert.Equal("an earlier build's plugin", File.ReadAllText(Mod(t, "dist", "MyMod.esm")));
             Assert.False(File.Exists(Mod(t, "dist", Common.MadeList)));
+        }
+    }
+
+    [Fact]
+    public void PluginStopsOnAPluginOrArchiveThatIsntTheMods()
+    {
+        // 0.4.0 deleted every plugin and archive in dist, a backup the user kept there included (V5 review, 2026-11-23)
+        var (t, sfmod, game, env) = Setup();
+        using (t)
+        {
+            env.ExecResult = FakeDotnet;
+            Assert.Equal(ExitCodes.Ok, RunApp(env, out _, "plugin", sfmod, "--game", game));
+            t.File(Path.Combine("mod", "dist", "MyMod-backup.esm"), "the user's backup");
+            t.File(Path.Combine("mod", "dist", "Other - Main.ba2"), "someone else's archive");
+            t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "an earlier build's archive");
+            var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains("\"MyMod-backup.esm\"", output);
+            Assert.Contains("\"Other - Main.ba2\"", output);
+            Assert.DoesNotContain("\"MyMod - Main.ba2\"", output);
+            Assert.Contains("so nothing was deleted", output);
+            Assert.Equal("the user's backup", File.ReadAllText(Mod(t, "dist", "MyMod-backup.esm")));
+            Assert.Equal("someone else's archive", File.ReadAllText(Mod(t, "dist", "Other - Main.ba2")));
+            Assert.Equal("an earlier build's archive", File.ReadAllText(Mod(t, "dist", "MyMod - Main.ba2")));
+            Assert.True(File.Exists(Mod(t, "dist", "MyMod.esm")));
         }
     }
 

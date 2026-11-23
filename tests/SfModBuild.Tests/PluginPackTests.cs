@@ -100,6 +100,7 @@ public partial class PluginPackTests
         using (t)
         {
             t.File(Path.Combine("mod", "dist", "Old.esm"), "an earlier build's plugin");
+            t.File(Path.Combine("mod", "dist", Common.MadeList), "Old.esm\n");
             env.ExecResult = FakeDotnet;
             var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
             Assert.True(code == ExitCodes.Ok, output);
@@ -250,7 +251,10 @@ public partial class PluginPackTests
             CompiledScripts(t);
             t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
             t.File(Path.Combine("mod", "dist", "MyMod-0.1.0.zip"), "an old zip");
+            // what an earlier build left: a file its made list names, and the mod's own archive
             t.File(Path.Combine("mod", "creations-out", "stale.txt"), "old");
+            t.File(Path.Combine("mod", "creations-out", Common.MadeList), "stale.txt\n");
+            t.File(Path.Combine("mod", "creations-out", "MyMod - Textures_xbox.ba2"), "old");
             env.ExecResult = FakeArchive2;
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
             Assert.True(code == ExitCodes.Ok, output);
@@ -259,8 +263,42 @@ public partial class PluginPackTests
             var stage = Mod(t, ".build", "stage");
             Assert.Equal($"{Path.Combine(stage, "Scripts")} \"-c={xbox}\" -r={stage} -compression=XBox -q", env.Execs[1].Arguments);
             var files = Directory.GetFiles(Mod(t, "creations-out")).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray();
-            Assert.Equal(new[] { "MyMod - Main.ba2", "MyMod - Main_xbox.ba2", "MyMod.esm" }, files);
+            Assert.Equal(new[] { Common.MadeList, "MyMod - Main.ba2", "MyMod - Main_xbox.ba2", "MyMod.esm" }, files);
+            Assert.Equal(new[] { "MyMod - Main.ba2", "MyMod - Main_xbox.ba2", "MyMod.esm" }, File.ReadAllLines(Mod(t, "creations-out", Common.MadeList)));
             Assert.Equal("made-up xbox ba2", File.ReadAllText(xbox));
+            // the next pack deletes its own files again instead of stopping on them
+            Assert.True(RunApp(env, out output, "pack", sfmod, "--game", game) == ExitCodes.Ok, output);
+        }
+    }
+
+    [Fact]
+    public void PackWithXboxStopsAndDeletesNothingWhenCreationsOutHoldsTheUsersFiles()
+    {
+        // 0.4.0 emptied creations-out, deleting these without a word (V5 review, 2026-11-23)
+        var (t, sfmod, game, env) = Setup(Json.Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"xbox\": true,"));
+        using (t)
+        {
+            CompiledScripts(t);
+            t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+            t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "an earlier build's archive");
+            t.File(Path.Combine("mod", "creations-out", "MyMod - Main_xbox.ba2"), "an earlier build's archive");
+            t.File(Path.Combine("mod", "creations-out", "CreationDescription-draft.txt"), "the user's draft");
+            t.File(Path.Combine("mod", "creations-out", "my drafts", "d.txt"), "the user's folder");
+            t.File(Path.Combine("mod", "creations-out", "MyMod-backup.esm"), "the user's backup");
+            env.ExecResult = FakeArchive2;
+            var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains("\"CreationDescription-draft.txt\"", output);
+            Assert.Contains("\"my drafts\" (a folder)", output);
+            Assert.Contains("\"MyMod-backup.esm\"", output);
+            Assert.Contains("so nothing was deleted", output);
+            Assert.Contains("Fix: move them out of creations-out", output);
+            Assert.Empty(env.Execs);
+            Assert.Equal("the user's draft", File.ReadAllText(Mod(t, "creations-out", "CreationDescription-draft.txt")));
+            Assert.Equal("the user's folder", File.ReadAllText(Mod(t, "creations-out", "my drafts", "d.txt")));
+            Assert.Equal("the user's backup", File.ReadAllText(Mod(t, "creations-out", "MyMod-backup.esm")));
+            Assert.Equal("an earlier build's archive", File.ReadAllText(Mod(t, "creations-out", "MyMod - Main_xbox.ba2")));
+            Assert.Equal("an earlier build's archive", File.ReadAllText(Mod(t, "dist", "MyMod - Main.ba2")));
         }
     }
 
@@ -375,6 +413,7 @@ public partial class PluginPackTests
         {
             t.File(Path.Combine("original", "Their Mod.esm"), "made-up ready plugin");
             t.File(Path.Combine("mod", "dist", "Old.esm"), "an earlier build's plugin");
+            t.File(Path.Combine("mod", "dist", Common.MadeList), "Old.esm\n");
             env.Vars["PATH"] = t.Dir("empty-bin");
             var code = RunApp(env, out var output, "plugin", sfmod);
             Assert.True(code == ExitCodes.Ok, output);

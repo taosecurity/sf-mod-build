@@ -7,7 +7,7 @@
 //   "<part> - Main.ba2"        each part's compiled scripts (<stage>/parts/<part>/Scripts), for a part with scripts
 //   "<plugin> - <suffix>.ba2"  each entry of the top-level archives list: its source folder packed as it is (with
 //                              -compression=None and -format=DDS when asked), or its ready file copied (not with xbox)
-// With "xbox": true it also makes the Creations upload set: creations-out is emptied, dist's files are copied into it,
+// With "xbox": true it also makes the Creations upload set: what earlier builds made in creations-out is deleted (anything else there stops it), dist's files are copied into it,
 // and "<plugin> - Main_xbox.ba2" and "<plugin> - Textures_xbox.ba2" are packed there with -compression=XBox. The Xbox
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
 // given (Xbox-format exports, which must cover every PC texture), else the PC textures. Pack deletes the mod's own old
@@ -26,7 +26,8 @@ internal static class Pack
         "  packs the compiled scripts and the loose files (assets) into \"<plugin> - Main.ba2\" and \"<plugin> - Textures.ba2\"\n" +
         "  in dist with the Creation Kit's Archive2, packs each part's scripts into \"<part> - Main.ba2\", and makes each\n" +
         "  archive in the archives list (packed from its source folder, or copied from its file); with \"xbox\": true\n" +
-        "  also makes creations-out (dist's files plus the \"_xbox\" archives); then runs steps.afterPack";
+        "  also makes creations-out (dist's files plus the \"_xbox\" archives), first deleting what earlier builds made\n" +
+        "  there (it stops if creations-out holds anything else); then runs steps.afterPack";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
 
@@ -107,6 +108,47 @@ internal static class Pack
     public static string? UnsafeCreationsOut(SfModProject project, IEnumerable<string> gameFolders) =>
         Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), gameFolders);
 
+    /// <summary>Before the Creations set is made: finds what an earlier build made in creations-out, which pack then
+    /// deletes. That is the names its made list gives, the mod's own plugins and archives (<see cref="Common.OwnNames"/>)
+    /// and the files about to be copied there from dist. Any other entry (a folder, a file the user keeps there such
+    /// as a description draft, another plugin) stops pack, naming each one, before anything is deleted. Null when
+    /// pack may go on (<paramref name="delete"/> then holds the files), else why not, with the fix.</summary>
+    static string? CheckCreationsOut(SfModProject project, List<FileInfo> delete)
+    {
+        var folder = project.CreationsOut;
+        if (Log.FilePath is { } log && Path.GetFullPath(log).StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return $"the log file {log} is inside {folder}, where the Creations set goes. Fix: give --log a file outside the mod's output folders";
+        try
+        {
+            var d = new DirectoryInfo(Path.TrimEndingDirectorySeparator(folder));
+            if (!d.Exists) return null;
+            // deleting files through a link would delete them wherever it points
+            if (d.LinkTarget is { } to)
+                return $"the creations-out folder {folder} is a link or junction to {to}, so pack would delete files wherever it points. Fix: in {project.File}, set \"creationsOut\" to a real folder of its own, for example \"creations-out\"";
+            var mine = Common.OwnNames(project);
+            mine.Add(Common.MadeList);
+            var list = Path.Combine(folder, Common.MadeList);
+            if (File.Exists(list)) mine.UnionWith(File.ReadAllLines(list).Where(n => n.Length > 0 && Path.GetFileName(n) == n));
+            if (Directory.Exists(project.Dist))
+                mine.UnionWith(Directory.GetFiles(project.Dist).Where(Common.Shippable).Select(f => Path.GetFileName(f)));
+            var foreign = new List<string>();
+            foreach (var e in d.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }).OrderBy(e => e.Name, StringComparer.Ordinal))
+            {
+                // only plain files are ever deleted here: a folder (or a link) is always the user's
+                if (e is FileInfo f && f.LinkTarget == null && mine.Contains(f.Name)) delete.Add(f);
+                else foreign.Add(e is FileInfo ? $"\"{e.Name}\"" : $"\"{e.Name}\" (a folder)");
+            }
+            if (foreign.Count == 0) return null;
+            delete.Clear();
+            return $"the creations-out folder {folder} holds {string.Join(", ", foreign)}, which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. "
+                   + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of creations-out and run again, or set \"creationsOut\" in {project.File} to a folder of its own";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"the creations-out folder {folder} can't be checked ({e.Message}). Fix: check that this account can read it and run again";
+        }
+    }
+
     /// <summary>The folders no emptied folder may be or hold: the mod, the stage, dist, the builder, the script
     /// sources and the assets, plus any given.</summary>
     static List<string> Keep(SfModProject project, params string[] more)
@@ -161,6 +203,13 @@ internal static class Pack
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             stdout.WriteLine($"RESULT: CANNOT PACK (the dist folder {project.Dist} can't be made: {e.Message}).");
+            return ExitCodes.BadInput;
+        }
+        // creations-out is checked before anything is deleted anywhere: a file or folder of the user's there stops pack
+        var creationsDelete = new List<FileInfo>();
+        if (project.Xbox && CheckCreationsOut(project, creationsDelete) is { } creationsWhy)
+        {
+            stdout.WriteLine($"RESULT: CANNOT PACK ({creationsWhy}).");
             return ExitCodes.BadInput;
         }
         if (DeleteStale(project, () => games, stdout) is { } staleCode) return staleCode;
@@ -258,33 +307,37 @@ internal static class Pack
             stdout.WriteLine(madeNames.Count == 1 ? $"RESULT: OK, {made} made" : $"RESULT: OK, {made}");
             return ExitCodes.Ok;
         }
-        if (Common.Empty(project.CreationsOut) is { } emptyError)
-        {
-            stdout.WriteLine($"RESULT: CANNOT PACK ({emptyError}).");
-            return ExitCodes.BadInput;
-        }
-        try
-        {
-            // dist's own files (the plugin, the PC archives, anything else the builder wrote): the same ones the zip
-            // takes, so never zips, Papyrus source, half-written zips or the log (archives this build doesn't make
-            // were refused above)
-            foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.OrdinalIgnoreCase))
-            {
-                if (!Common.Shippable(f)) continue;
-                Common.CopyFile(f, Path.Combine(project.CreationsOut, Path.GetFileName(f)));
-                Log.Write($"copied {f} into {project.CreationsOut}");
-            }
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            stdout.WriteLine($"RESULT: CANNOT PACK (dist's files couldn't be copied into {project.CreationsOut}: {e.Message}).");
-            return ExitCodes.BadInput;
-        }
         var xboxJobs = new List<Job>();
         if (project.HasMainArchive)
             xboxJobs.Add(new Job(Path.Combine(project.CreationsOut, project.XboxBa2Name), mainSource!, mainRoot!, null, mainCompression ?? "XBox"));
         if (project.HasTexturesArchive)
             xboxJobs.Add(new Job(Path.Combine(project.CreationsOut, project.XboxTexturesBa2Name), xboxTexSource ?? texSource!, xboxTexSource ?? texSource!, "DDS", "XBox"));
+        try
+        {
+            // only what CheckCreationsOut found to be an earlier build's (0.4.0 and earlier emptied the folder)
+            foreach (var f in creationsDelete)
+            {
+                f.Delete();
+                Log.Write($"deleted from creations-out (made by an earlier build): {f.FullName}");
+            }
+            Directory.CreateDirectory(project.CreationsOut);
+            // dist's own files (the plugin, the PC archives, anything else the builder wrote): the same ones the zip
+            // takes, so never zips, Papyrus source, half-written zips or the log (archives this build doesn't make
+            // were refused above)
+            var copies = Directory.GetFiles(project.Dist).Order(StringComparer.OrdinalIgnoreCase).Where(Common.Shippable).ToList();
+            // listed before anything is written, so a copy or Archive2 run that fails still leaves its file listed
+            Common.RecordMade(project.CreationsOut, copies.Concat(xboxJobs.Select(j => j.Ba2)).Select(Path.GetFileName).Select(n => n!), add: false);
+            foreach (var f in copies)
+            {
+                Common.CopyFile(f, Path.Combine(project.CreationsOut, Path.GetFileName(f)), overwrite: true);
+                Log.Write($"copied {f} into {project.CreationsOut}");
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            stdout.WriteLine($"RESULT: CANNOT PACK (dist's files couldn't be copied into {project.CreationsOut}: {e.Message}). Fix: close any program using files there and run again.");
+            return ExitCodes.BadInput;
+        }
         foreach (var job in xboxJobs)
             if (Archive(project, archive2, job, env, stdout) is { } code) return code;
         if (project.HasTexturesArchive && assets!.XboxTextures == null)

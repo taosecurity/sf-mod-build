@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.1 (not released yet)
+
+### Fixes
+
+- `pack` with `"xbox": true` no longer deletes your files in creations-out. Before, it emptied creations-out on every run, so a file you kept there (a Creations description draft, say) or a folder of your own was deleted without a word, and `pack` exited 0. Now it deletes only what earlier builds made there: the names in creations-out's new `.sf-mod-build-made` list, the mod's own plugins and archives, and the files it is about to copy there from dist. When creations-out holds anything else, `pack` deletes nothing, in creations-out or in dist, and stops with exit 2, naming each one and the fix. A creations-out folder that is a link or junction is now refused on this path too. 0.4.0 and earlier have this problem.
+- `plugin` no longer deletes a plugin or archive in dist that isn't the mod's own. Before, it deleted every `.esm`, `.esp`, `.esl` and `.ba2` at the top of dist, so a backup such as `MyMod-backup.esm` was deleted without a word. Now it deletes only the names sfmod.json gives (the plugin, each part, the archives `pack` makes, the `archives` list and `zip.archives`) and the names in dist's made list; another plugin or archive stops it with exit 2, naming it, and nothing is deleted. 0.4.0 and earlier have this problem.
+
+### Example
+
+A made-up mod with `"xbox": true`, after a first `plugin` and `pack`, with a description draft and a folder of drafts added to creations-out (folder names are shortened):
+
+    > sf-mod-build pack
+    RESULT: CANNOT PACK (the creations-out folder C:\Mods\MyMod\creations-out holds "CreationDescription-draft.txt", "my drafts" (a folder), which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. Fix: move them out of creations-out and run again, or set "creationsOut" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+
+and the same mod with a backup plugin kept in dist:
+
+    > sf-mod-build plugin
+    RESULT: CANNOT BUILD THE PLUGIN (the dist folder C:\Mods\MyMod\dist holds "MyMod-backup.esm", which no earlier build listed as its own, and sf-mod-build deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. Fix: move it out of dist and run again (a build by sf-mod-build 0.3.0 or earlier left no list of what it made, so its builder's other files are named here once), or set "dist" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+
+Both exit 2, and the draft, the folder and the backup are still there.
+
 ## 0.4.0 (2026-11-23)
 
 ### What's new

@@ -185,7 +185,7 @@ public class DoctorTests
         Assert.Equal(2, App.Run(Array.Empty<string>(), env, new StringWriter()));
         var v = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "--version" }, env, v));
-        Assert.StartsWith("sf-mod-build 0.4.0 ", v.ToString());
+        Assert.StartsWith("sf-mod-build 0.4.1 ", v.ToString());
         var h = new StringWriter();
         Assert.Equal(0, App.Run(new[] { "doctor", "--help" }, env, h));
         Assert.Contains("usage: sf-mod-build doctor", h.ToString());

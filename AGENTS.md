@@ -186,7 +186,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - 0: OK (warnings allowed).
 - 1: the build or the check failed (compiler errors, builder failure, a `steps` command that exited non-zero, checker found problems).
-- 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder, an archive in dist the build doesn't make, a file or folder in dist that no earlier build made, a `--masters-dir` that isn't a folder).
+- 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder, an archive in dist the build doesn't make, a file or folder in dist or creations-out that no earlier build made, a `--masters-dir` that isn't a folder).
 
 ## 9. The log
 
@@ -198,10 +198,15 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 ## 10. Limits
 
 - Never compiles with `-release` and has no option for it (it strips every `Debug.Trace`).
-- Never writes into the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist folder
-  that is a link or junction (with nothing to pack, a creations-out folder too; in plugin, any dist that is a
-  link or junction), and never empties a folder that is or holds the mod folder, a source folder, the builder or
-  a drive root. In dist it deletes only plugins, `.ba2` files and what earlier builds made there.
+- Never writes into the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist or
+  creations-out folder that is a link or junction (in plugin, any dist that is a link or junction), and never
+  empties a folder that is or holds the mod folder, a source folder, the builder or a drive root.
+- Never deletes a file it didn't make (since 0.4.1). In dist (plugin) and creations-out (pack with `"xbox": true`)
+  it deletes only the names in that folder's `.sf-mod-build-made` list, the mod's own plugins and archives (the
+  names sfmod.json gives: the plugin, each part, the archives pack makes, the `archives` list and `zip.archives`),
+  half-written zips in dist, and in creations-out the files it is about to copy there from dist. Anything else
+  there (a user's file or folder, a backup plugin such as `MyMod-backup.esm`) stops the step with exit 2, naming
+  each entry, before anything is deleted. Ask the person to move it out; don't delete it for them.
 - Never uploads anything, never changes the game's files, never edits the person's load order or mod manager.
 - Never packs an assets folder that is in the game's folder or holds it, the mod's own folder, dist, stage,
   creations-out, the builder or a script source folder; validate refuses those.
@@ -214,8 +219,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   in the person's own script after `sf-mod-build build`.
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
-- Don't hand-edit files in dist, stage or creations-out: the next build empties stage and creations-out and
-  deletes the files earlier builds made in dist.
+- Don't hand-edit files in dist, stage or creations-out: the next build empties stage and deletes the files
+  earlier builds made in dist and creations-out.
 - Archives the builder writes itself into dist ship only when their file names are listed in `zip.archives` (since
   0.3.0); they can't be used with `"xbox": true`. Otherwise put their files in the assets folder, so pack builds
   them into the mod's own archives, or use the `archives` list (since 0.4.0) for a folder pack should pack as its

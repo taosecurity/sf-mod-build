@@ -378,7 +378,7 @@ public class AssetsTests
             Assert.EndsWith("-compression=XBox -q", env.Execs[2].Arguments);
             Assert.Equal($"{tex} \"-c={xboxTex}\" -r={tex} -format=DDS -compression=XBox -q", env.Execs[3].Arguments);
             var files = Directory.GetFiles(Mod(t, "creations-out")).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray();
-            Assert.Equal(new[] { "MyMod - Main.ba2", "MyMod - Main_xbox.ba2", "MyMod - Textures.ba2", "MyMod - Textures_xbox.ba2", "MyMod.esm" }, files);
+            Assert.Equal(new[] { Common.MadeList, "MyMod - Main.ba2", "MyMod - Main_xbox.ba2", "MyMod - Textures.ba2", "MyMod - Textures_xbox.ba2", "MyMod.esm" }, files);
             Assert.Contains("holds the PC-format textures", output);
         }
     }
@@ -1109,9 +1109,10 @@ public class AssetsTests
     }
 
     [Fact]
-    public void FullPackEmptiesACreationsOutLinkWithoutTouchingItsTarget()
+    public void FullPackRefusesACreationsOutLinkWithoutTouchingItsTarget()
     {
-        // the full pack empties creations-out; when it is a link, only the link goes and a real folder takes its place
+        // since 0.4.1 the full pack deletes files inside creations-out (0.4.0 emptied it), so a link is refused, as
+        // on the nothing-to-pack path
         var (t, sfmod, game, env) = Setup(WithXbox(Json));
         using (t)
         {
@@ -1122,19 +1123,19 @@ public class AssetsTests
             var creations = Mod(t, "creations-out");
             Link(creations, outside);
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
-            Assert.True(code == ExitCodes.Ok, output);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("is a link or junction to", output);
+            Assert.Empty(env.Execs);
             Assert.Equal("someone else's file", File.ReadAllText(keep));
             Assert.Single(Directory.GetFiles(outside));
-            Assert.Null(new DirectoryInfo(creations).LinkTarget);
-            Assert.True(File.Exists(Path.Combine(creations, "MyMod - Main_xbox.ba2")));
         }
     }
 
     [Fact]
-    public void FullPackEmptiesACreationsOutLinkSpelledWithATrailingSlashWithoutTouchingItsTarget()
+    public void FullPackRefusesACreationsOutLinkSpelledWithATrailingSlashWithoutTouchingItsTarget()
     {
-        // "creations-out/": on Linux a recursive delete of a link spelled with the separator follows it, so the path
-        // is trimmed where sfmod.json is read and only the link goes
+        // "creations-out/": on Linux readlink on a path spelled with the separator follows the link, so the path is
+        // trimmed where sfmod.json is read and the link is seen
         var (t, sfmod, game, env) = Setup(WithXbox(Json).Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"creationsOut\": \"creations-out/\","));
         using (t)
         {
@@ -1145,10 +1146,10 @@ public class AssetsTests
             var creations = Mod(t, "creations-out");
             Link(creations, outside);
             var code = RunApp(env, out var output, "pack", sfmod, "--game", game);
-            Assert.True(code == ExitCodes.Ok, output);
+            Assert.True(code == ExitCodes.BadInput, output);
+            Assert.Contains("is a link or junction to", output);
             Assert.Equal("someone else's file", File.ReadAllText(keep));
             Assert.Single(Directory.GetFiles(outside));
-            Assert.Null(new DirectoryInfo(creations).LinkTarget);
         }
     }
 

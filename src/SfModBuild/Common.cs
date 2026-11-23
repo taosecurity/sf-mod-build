@@ -168,9 +168,19 @@ internal static class Common
     /// line), so the next build deletes those and nothing else. It never goes in the zip or the Creations set.</summary>
     public const string MadeList = ".sf-mod-build-made";
 
-    /// <summary>File kinds only a build puts in dist: plugins and archives. They are deleted from dist before the
-    /// builder runs, as are half-written zips. Zips are kept (zip overwrites its own).</summary>
-    static readonly string[] BuildKinds = { ".esm", ".esp", ".esl", ".ba2" };
+    /// <summary>The plugin and archive names sfmod.json gives the mod (matched without case): the plugin and each
+    /// part, every archive pack makes or made for them (Main and Textures, PC and Xbox, each part's, the archives
+    /// list) and the names zip.archives lists. Only these, the made list's names and half-written zips are deleted
+    /// from dist and creations-out; any other plugin or archive there is the user's.</summary>
+    public static HashSet<string> OwnNames(SfModProject project)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { project.Plugin, project.Ba2Name, project.TexturesBa2Name, project.XboxBa2Name, project.XboxTexturesBa2Name };
+        foreach (var part in project.Parts) { names.Add(part.Plugin); names.Add(part.Ba2Name); }
+        names.UnionWith(project.Archives.Select(a => a.Name));
+        names.UnionWith(project.ZipArchives);
+        return names;
+    }
 
     /// <summary>The top-level names in dist, or null when it isn't there, is a link or can't be read.</summary>
     public static HashSet<string>? DistEntries(string dist)
@@ -230,7 +240,7 @@ internal static class Common
         Same(Full(project.ZipFolder), Full(path)) || Under(Full(project.ZipFolder), Full(path));
 
     /// <summary>Gets dist ready for a new plugin, deleting only what earlier builds made there: the names in the made
-    /// list, plugin and archive files, and half-written zips. Zips stay. When dist holds anything else (a folder or
+    /// list, the mod's own plugins and archives (<see cref="OwnNames"/>), and half-written zips. Zips stay. When dist holds anything else (a folder or
     /// file the user keeps there), nothing is deleted and the reason names each one. Null when done, else why it
     /// can't (with the fix).</summary>
     public static string? CleanDist(SfModProject project)
@@ -250,6 +260,7 @@ internal static class Common
             if (d.LinkTarget is { } to)
                 return $"the dist folder {folder} is a link or junction to {to}, so deleting the earlier build's files there would delete them wherever it points. Fix: in {project.File}, set \"dist\" to a real folder of its own, for example \"dist\"";
             var made = ReadMadeList(folder);
+            var own = OwnNames(project);
             var delete = new List<FileSystemInfo>();
             var foreign = new List<string>();
             foreach (var e in d.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }).OrderBy(e => e.Name, StringComparer.Ordinal))
@@ -259,13 +270,15 @@ internal static class Common
                 if (file && n.EndsWith(".zip", PathCase)) continue;
                 // zip.folder inside dist ("dist/release"): the zips stay, so the folder holding them stays too
                 if (!file && HoldsZipFolder(project, e.FullName)) continue;
+                // a plugin or archive counts as the build's only by a name sfmod.json gives it (0.4.0 deleted every
+                // one, a backup plugin kept in dist included)
                 if (Same(n, MadeList) || made.Contains(n)
-                    || (file && (BuildKinds.Any(k => n.EndsWith(k, PathCase)) || n.EndsWith(Zip.PartialSuffix, PathCase))))
+                    || (file && (own.Contains(n) || n.EndsWith(Zip.PartialSuffix, PathCase))))
                     delete.Add(e);
                 else foreign.Add(file ? $"\"{n}\"" : $"\"{n}\" (a folder)");
             }
             if (foreign.Count > 0)
-                return $"the dist folder {folder} holds {string.Join(", ", foreign)}, which no earlier build listed as its own, and sf-mod-build deletes only the plugins and archives in dist and what earlier builds made there, so nothing was deleted. "
+                return $"the dist folder {folder} holds {string.Join(", ", foreign)}, which no earlier build listed as its own, and sf-mod-build deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. "
                        + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of dist and run again (a build by sf-mod-build 0.3.0 or earlier left no list of what it made, so its builder's other files are named here once), or set \"dist\" in {project.File} to a folder of its own";
             // the made list goes last, so a delete that fails (a plugin open in the CK or xEdit) leaves it for the next run
             foreach (var e in delete.OrderBy(e => Same(e.Name, MadeList)))
