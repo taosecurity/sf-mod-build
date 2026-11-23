@@ -204,7 +204,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Never deletes a file it didn't make (since 0.4.1). In dist (plugin) and creations-out (pack with `"xbox": true`)
   it deletes only the names in that folder's `.sf-mod-build-made` list, the mod's own plugins and archives (the
   names sfmod.json gives: the plugin, each part, the archives pack makes, the `archives` list and `zip.archives`),
-  half-written zips in dist, and in creations-out the files it is about to copy there from dist. Anything else
+  half-written zips in dist, and in creations-out the files it is about to copy there from dist. Zips (and the
+  `zip.folder` when it is inside either folder) always stay. Anything else
   there (a user's file or folder, a backup plugin such as `MyMod-backup.esm`) stops the step with exit 2, naming
   each entry, before anything is deleted. Ask the person to move it out; don't delete it for them.
 - Never uploads anything, never changes the game's files, never edits the person's load order or mod manager.

@@ -12,7 +12,7 @@
 A made-up mod with `"xbox": true`, after a first `plugin` and `pack`, with a description draft and a folder of drafts added to creations-out (folder names are shortened):
 
     > sf-mod-build pack
-    RESULT: CANNOT PACK (the creations-out folder C:\Mods\MyMod\creations-out holds "CreationDescription-draft.txt", "my drafts" (a folder), which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. Fix: move them out of creations-out and run again, or set "creationsOut" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+    RESULT: CANNOT PACK (the creations-out folder C:\Mods\MyMod\creations-out holds "CreationDescription-draft.txt", "my drafts" (a folder), which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. Fix: move them out of creations-out and run again (sf-mod-build 0.4.0 and earlier left no list of what they made there, so their other files are named here once), or set "creationsOut" in C:\Mods\MyMod\sfmod.json to a folder of its own).
 
 and the same mod with a backup plugin kept in dist:
 

@@ -255,9 +255,10 @@ about to copy there from dist. Anything else, such as a Creations description dr
 `pack` with exit 2, naming each one, and nothing is deleted:
 
     > sf-mod-build pack
-    RESULT: CANNOT PACK (the creations-out folder C:\Mods\MyMod\creations-out holds "CreationDescription-draft.txt", "my drafts" (a folder), which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. Fix: move them out of creations-out and run again, or set "creationsOut" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+    RESULT: CANNOT PACK (the creations-out folder C:\Mods\MyMod\creations-out holds "CreationDescription-draft.txt", "my drafts" (a folder), which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. Fix: move them out of creations-out and run again (sf-mod-build 0.4.0 and earlier left no list of what they made there, so their other files are named here once), or set "creationsOut" in C:\Mods\MyMod\sfmod.json to a folder of its own).
 
-A creations-out folder that is a link or junction is refused too. When you upload, take the plugin and the
+Zips stay: when `zip.folder` is creations-out or inside it, `pack` leaves the zips (and the folder holding them)
+alone. A creations-out folder that is a link or junction is refused too. When you upload, take the plugin and the
 archives; the `.sf-mod-build-made` list stays behind.
 
 ## The project file, sfmod.json

@@ -134,6 +134,9 @@ internal static class Pack
             var foreign = new List<string>();
             foreach (var e in d.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }).OrderBy(e => e.Name, StringComparer.Ordinal))
             {
+                // zip.folder at or inside creations-out: the zips (and the folder holding them) stay, as in dist
+                if (e is FileInfo z && (z.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || z.Name.EndsWith(Zip.PartialSuffix, StringComparison.OrdinalIgnoreCase))) continue;
+                if (e is DirectoryInfo && Common.HoldsZipFolder(project, e.FullName)) continue;
                 // only plain files are ever deleted here: a folder (or a link) is always the user's
                 if (e is FileInfo f && f.LinkTarget == null && mine.Contains(f.Name)) delete.Add(f);
                 else foreign.Add(e is FileInfo ? $"\"{e.Name}\"" : $"\"{e.Name}\" (a folder)");
@@ -141,7 +144,7 @@ internal static class Pack
             if (foreign.Count == 0) return null;
             delete.Clear();
             return $"the creations-out folder {folder} holds {string.Join(", ", foreign)}, which sf-mod-build didn't make, and pack deletes only the mod's own plugins and archives (the names sfmod.json gives) and what earlier builds made there, so nothing was deleted. "
-                   + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of creations-out and run again, or set \"creationsOut\" in {project.File} to a folder of its own";
+                   + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of creations-out and run again (sf-mod-build 0.4.0 and earlier left no list of what they made there, so their other files are named here once), or set \"creationsOut\" in {project.File} to a folder of its own";
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -312,14 +315,20 @@ internal static class Pack
             xboxJobs.Add(new Job(Path.Combine(project.CreationsOut, project.XboxBa2Name), mainSource!, mainRoot!, null, mainCompression ?? "XBox"));
         if (project.HasTexturesArchive)
             xboxJobs.Add(new Job(Path.Combine(project.CreationsOut, project.XboxTexturesBa2Name), xboxTexSource ?? texSource!, xboxTexSource ?? texSource!, "DDS", "XBox"));
+        // only what CheckCreationsOut found to be an earlier build's (0.4.0 and earlier emptied the folder); the made
+        // list goes last, so a delete that fails (an archive open in another program) leaves it for the next run
+        foreach (var f in creationsDelete.OrderBy(f => string.Equals(f.Name, Common.MadeList, StringComparison.OrdinalIgnoreCase)))
+        {
+            try { f.Delete(); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                stdout.WriteLine($"RESULT: CANNOT PACK (\"{f.Name}\", an earlier build's file in {project.CreationsOut}, couldn't be deleted: {e.Message}). Fix: close any program using it and run again.");
+                return ExitCodes.BadInput;
+            }
+            Log.Write($"deleted from creations-out (made by an earlier build): {f.FullName}");
+        }
         try
         {
-            // only what CheckCreationsOut found to be an earlier build's (0.4.0 and earlier emptied the folder)
-            foreach (var f in creationsDelete)
-            {
-                f.Delete();
-                Log.Write($"deleted from creations-out (made by an earlier build): {f.FullName}");
-            }
             Directory.CreateDirectory(project.CreationsOut);
             // dist's own files (the plugin, the PC archives, anything else the builder wrote): the same ones the zip
             // takes, so never zips, Papyrus source, half-written zips or the log (archives this build doesn't make

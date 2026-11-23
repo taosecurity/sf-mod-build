@@ -164,8 +164,9 @@ internal static class Common
             ? Directory.GetFiles(folder).Where(f => Same(Path.GetFileName(f), name)).Order(StringComparer.Ordinal).ToList()
             : new List<string>();
 
-    /// <summary>The list in dist of what sf-mod-build and the mod's own builder and steps put there (one name per
-    /// line), so the next build deletes those and nothing else. It never goes in the zip or the Creations set.</summary>
+    /// <summary>The list in dist (and in creations-out, with xbox) of what sf-mod-build and the mod's own builder and
+    /// steps put there (one name per line), so the next build deletes those and nothing else. It never goes in the
+    /// zip; in creations-out it stays behind when the user uploads the plugin and archives.</summary>
     public const string MadeList = ".sf-mod-build-made";
 
     /// <summary>The plugin and archive names sfmod.json gives the mod (matched without case): the plugin and each
