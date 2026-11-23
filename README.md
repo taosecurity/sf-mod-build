@@ -432,7 +432,9 @@ loose files for Main, no `.dds` files in `assets.source` for Textures); `validat
 A `source` folder must be inside the mod's folder and apart from dist, stage and creations-out. It may be filled by
 a `steps.afterPlugin` command, so `validate` doesn't look inside it; `pack` stops with exit 2, before Archive2 runs,
 when it isn't there, is empty, holds a file at its top, a link, or a `.psc`, plugin, archive or zip. A `file` must
-be there when `validate` runs. An archive can't be in both `archives` and `zip.archives`. In this version
+be there when `validate` runs.
+
+An archive can't be in both `archives` and `zip.archives`. In this version
 `archives` can't be used with `"xbox": true` (`validate` reports it as a PROBLEM): `pack` can't make a correct Xbox
 voice archive from PC `.wem` files, and a ready archive has no Xbox copy.
 
