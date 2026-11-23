@@ -584,6 +584,50 @@ public class AssetsTests
         }
     }
 
+    static void Dist(TempDir t, bool extra)
+    {
+        t.File(Path.Combine("mod", "dist", "MyMod.esm"), "made-up plugin");
+        t.File(Path.Combine("mod", "dist", "MyMod - Main.ba2"), "main");
+        t.File(Path.Combine("mod", "dist", "MyMod - Textures.ba2"), "textures");
+        if (extra) t.File(Path.Combine("mod", "dist", "MyMod - Extra.ba2"), "builder-written");
+    }
+
+    [Fact]
+    public void ZipArchivesShipsTheListedArchiveAndStillRefusesAnUnlistedOne()
+    {
+        var (t, sfmod, _, env) = Setup(Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"assets\": { \"source\": \"Assets\" }, \"zip\": { \"archives\": [\"MyMod - Extra.ba2\"] }"));
+        using (t)
+        {
+            Dist(t, extra: true);
+            var code = RunApp(env, out var output, "zip", sfmod);
+            Assert.True(code == ExitCodes.Ok, output);
+            using (var zip = ZipFile.OpenRead(Mod(t, "MyMod-0.1.0.zip")))
+                Assert.Equal(new[] { "MyMod - Extra.ba2", "MyMod - Main.ba2", "MyMod - Textures.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
+            File.Delete(Mod(t, "MyMod-0.1.0.zip"));
+            var stray = t.File(Path.Combine("mod", "dist", "Stray.ba2"), "not listed");
+            code = RunApp(env, out output, "zip", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains($"RESULT: CANNOT ZIP ({stray} is an archive in dist that this build doesn't make", output);
+            Assert.Contains("zip.archives", output);
+            Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
+        }
+    }
+
+    [Fact]
+    public void ZipArchivesListedButMissingIsAnErrorNamingTheFileAndTheFix()
+    {
+        var (t, sfmod, _, env) = Setup(Json.Replace("\"assets\": { \"source\": \"Assets\" }", "\"assets\": { \"source\": \"Assets\" }, \"zip\": { \"archives\": [\"MyMod - Extra.ba2\"] }"));
+        using (t)
+        {
+            Dist(t, extra: false);
+            var code = RunApp(env, out var output, "zip", sfmod);
+            Assert.Equal(ExitCodes.BadInput, code);
+            Assert.Contains("RESULT: CANNOT ZIP (there is no \"MyMod - Extra.ba2\" in", output);
+            Assert.Contains("lists it in zip.archives. Fix: make your builder write it into dist, or take it out of zip.archives", output);
+            Assert.False(File.Exists(Mod(t, "MyMod-0.1.0.zip")));
+        }
+    }
+
     [Fact]
     public void ZipNamesTheSameStrayArchiveOnEveryDisk()
     {

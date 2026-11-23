@@ -26,7 +26,8 @@
 //     "zip": {
 //       "name": "{name}-{version}.zip",            the zip's name (default {name}-{version}.zip)
 //       "folder": ".",                             where the zip is written (default: the sfmod.json folder)
-//       "files": { "README.md": "README-{name}.md" }   extra files: file here -> name inside the zip (never .psc)
+//       "files": { "README.md": "README-{name}.md" },  extra files: file here -> name inside the zip (never .psc)
+//       "archives": ["MyMod - Extra.ba2"]          archives your builder writes into dist itself: they ship in the zip
 //     },
 //     "check": {
 //       "checker": "path/to/sf-mod-check.exe",     default: sf-mod-check or sfmodcheck on PATH
@@ -83,6 +84,8 @@ internal sealed class SfModProject
     public string ZipPath => Path.Combine(ZipFolder, ZipName);
     /// <summary>Extra zip files in the order written: full path here, name inside the zip.</summary>
     public required IReadOnlyList<(string Source, string NameInZip)> ZipFiles { get; init; }
+    /// <summary>zip.archives: the .ba2 files the builder itself writes into dist; they ship in the zip and aren't stray.</summary>
+    public IReadOnlyList<string> ZipArchives { get; init; } = Array.Empty<string>();
     public string? Checker { get; init; }
     public bool CheckRequired { get; init; }
     public required IReadOnlyList<string> CheckArgs { get; init; }
@@ -135,7 +138,7 @@ internal sealed class SfModProject
     static readonly string[] SkippedAssetNames = { "Thumbs.db", "desktop.ini" };
     static readonly string[] ScriptsFields = { "source", "namespaces", "files" };
     static readonly string[] BuilderFields = { "project", "args" };
-    static readonly string[] ZipFields = { "name", "folder", "files" };
+    static readonly string[] ZipFields = { "name", "folder", "files", "archives" };
     static readonly string[] CheckFields = { "checker", "required", "args" };
     public static readonly string[] BuilderPlaceholders = { "data", "dist", "scripts", "stage", "version" };
     public static readonly string[] ZipPlaceholders = { "name", "plugin", "version" };
@@ -259,23 +262,26 @@ internal sealed class SfModProject
                 if (scripts != null) hold.AddRange(scripts.Sources.Select(s => ("a script source folder", s)));
                 assets = Assets(root, xbox, keep, hold, out assetsOk);
             }
-            var (zipName, zipFolder, zipFiles) = Zip(root, name, plugin, version);
+            var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
             var (checker, checkRequired, checkArgs) = Check(root);
 
             if (plugin == null || name == null || version == null || builderProject == null || builderArgs == null || dist == null
-                || stage == null || creationsOut == null || !assetsOk || zipName == null || zipFolder == null || zipFiles == null || checkArgs == null)
+                || stage == null || creationsOut == null || !assetsOk || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
                 File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts, Assets = assets,
                 BuilderProject = builderProject, BuilderArgs = builderArgs, Dist = dist, Stage = stage, Xbox = xbox,
-                CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles,
+                CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
             // archives are refused per entry above, so only the plugin's name is left to check
             foreach (var (_, inZip) in zipFiles)
                 if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase))
                     Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its archives come from dist).", "leave the plugin and the archives out of zip.files.");
+            foreach (var a in zipArchives)
+                if (p.ArchiveNames.Contains(a, StringComparer.OrdinalIgnoreCase))
+                    Error("zip.archives", $"\"{a}\" is an archive that sf-mod-build pack makes itself (from the scripts and assets).", "take it out of zip.archives; list only archives your builder writes.");
             return p;
         }
 
@@ -645,7 +651,7 @@ internal sealed class SfModProject
             return (project, args);
         }
 
-        (string?, string?, List<(string, string)>?) Zip(JsonElement root, string? name, string? plugin, string? version)
+        (string?, string?, List<(string, string)>?, List<string>?) Zip(JsonElement root, string? name, string? plugin, string? version)
         {
             var values = new Dictionary<string, string>
             {
@@ -656,7 +662,7 @@ internal sealed class SfModProject
             if (has && z.ValueKind != JsonValueKind.Object)
             {
                 Error("zip", $"it is a {Kind(z)}, not an object.", "write it like \"zip\": { \"files\": { \"README.md\": \"README-{name}.md\" } }.");
-                return (null, null, null);
+                return (null, null, null, null);
             }
             if (has) Fields(z, "zip.", ZipFields);
 
@@ -679,7 +685,7 @@ internal sealed class SfModProject
                 if (f.ValueKind != JsonValueKind.Object)
                 {
                     Error("zip.files", $"it is a {Kind(f)}, not an object.", "map each file here to its name in the zip, for example { \"README.md\": \"README-{name}.md\", \"LICENSE\": \"LICENSE-{name}.txt\" }.");
-                    return (zipName, zipFolder, null);
+                    return (zipName, zipFolder, null, null);
                 }
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var e in f.EnumerateObject())
@@ -724,7 +730,39 @@ internal sealed class SfModProject
                     if (source != null) files.Add((source, inZip));
                 }
             }
-            return (zipName, zipFolder, files);
+            var archives = new List<string>();
+            if (has && z.TryGetProperty("archives", out var ar) && ar.ValueKind != JsonValueKind.Null)
+            {
+                if (ar.ValueKind != JsonValueKind.Array)
+                {
+                    Error("zip.archives", $"it is a {Kind(ar)}, not a list.", "list the archive file names your builder writes into dist, for example [\"MyMod - Extra.ba2\"].");
+                    return (zipName, zipFolder, files, null);
+                }
+                var seenArchives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var i = 0;
+                foreach (var e in ar.EnumerateArray())
+                {
+                    var field = $"zip.archives[{i++}]";
+                    if (e.ValueKind != JsonValueKind.String)
+                    {
+                        Error(field, $"it is a {Kind(e)}.", "give the archive's file name as a string, for example \"MyMod - Extra.ba2\".");
+                        continue;
+                    }
+                    var a = e.GetString()!;
+                    if (!a.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase) || !GoodFileName(a) || a.Contains('/') || a.Contains('\\'))
+                    {
+                        Error(field, $"\"{a}\" isn't a plain archive file name ending in .ba2.", "give only the file name of an archive in dist, for example \"MyMod - Extra.ba2\".");
+                        continue;
+                    }
+                    if (!seenArchives.Add(a))
+                    {
+                        Error(field, $"\"{a}\" is listed twice.", "list each archive once.");
+                        continue;
+                    }
+                    archives.Add(a);
+                }
+            }
+            return (zipName, zipFolder, files, archives);
         }
 
         (string?, bool, List<string>?) Check(JsonElement root)

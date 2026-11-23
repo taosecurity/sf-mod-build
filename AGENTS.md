@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.2.1. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.3.0. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -25,7 +25,7 @@ background; this file has what to run.
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
 5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.2]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.2.1 was tested with BuildKit 0.4.2;
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.3.0 was tested with BuildKit 0.4.2;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -119,8 +119,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
   A `.ba2` in dist that the build doesn't make stops zip (and pack with `"xbox": true`) with exit 2 and a RESULT
   line naming it (pack without xbox only prints a `WARNING` line naming it and exits 0); tell the person to delete
-  it from dist (sf-mod-build ships only the archives it builds;
-  `zip.files` takes no archives, and validate reports a `.ba2` there as a PROBLEM). pack deletes the mod's own old
+  it from dist (sf-mod-build ships only the archives it builds). If the mod's own builder writes an archive on
+  purpose, list its file name in `zip.archives` in sfmod.json (for example `"archives": ["MyMod - Extra.ba2"]`);
+  `zip` then ships it, and stops with exit 2, naming it, if it isn't in dist. `zip.files` takes no archives, and
+  validate reports a `.ba2` there as a PROBLEM. pack deletes the mod's own old
   archives from dist when the mod no longer needs them (and from creations-out when xbox is on and there is nothing
   to pack; the other files there stay as the last build left them).
 - A cache of the game's script sources in `%LOCALAPPDATA%\sf-mod-build\vanilla\<sha256>\`.

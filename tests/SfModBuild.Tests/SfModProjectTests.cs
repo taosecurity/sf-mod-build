@@ -345,6 +345,38 @@ public class SfModProjectTests
     }
 
     [Fact]
+    public void ZipArchivesLoadsAndShowsInValidateOrder()
+    {
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace("\"zip\": {", "\"zip\": { \"archives\": [\"MyMod - Extra.ba2\"],"));
+        Assert.True(p != null, All(problems));
+        Assert.Equal(new[] { "MyMod - Extra.ba2" }, p!.ZipArchives);
+    }
+
+    [Theory]
+    [InlineData("\"MyMod - Main.ba2\"", "makes itself")]
+    [InlineData("\"sub/Extra.ba2\"", "plain archive file name")]
+    [InlineData("\"Extra.zip\"", "plain archive file name")]
+    [InlineData("\"A.ba2\", \"a.BA2\"", "listed twice")]
+    [InlineData("3", "it is a")]
+    public void ZipArchivesBadEntriesAreProblems(string list, string words)
+    {
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace("\"zip\": {", $"\"zip\": {{ \"archives\": [{list}],"));
+        Assert.Null(p);
+        Assert.Contains(problems, x => x.Field.StartsWith("zip.archives") && x.Problem.Contains(words));
+    }
+
+    [Fact]
+    public void ZipArchivesThatIsNotAListIsAProblem()
+    {
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace("\"zip\": {", "\"zip\": { \"archives\": \"Extra.ba2\","));
+        Assert.Null(p);
+        Assert.Contains(problems, x => x.Field == "zip.archives" && x.Problem.Contains("not a list"));
+    }
+
+    [Fact]
     public void ZipNameAndFolder()
     {
         using var t = Mod();

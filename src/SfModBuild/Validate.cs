@@ -67,7 +67,7 @@ internal static class Validate
             .Concat(p.HasTexturesArchive ? new[] { p.XboxTexturesBa2Name } : Array.Empty<string>()).ToList();
         o.WriteLine($"xbox:     {(!p.Xbox ? "no" : xboxArchives.Count == 0 ? $"yes, but there is nothing to pack for it; {p.CreationsOut} isn't made" : $"yes, {string.Join(" and ", xboxArchives.Select(a => $"\"{a}\""))} in {p.CreationsOut}")}");
         o.WriteLine($"zip:      {p.ZipPath}");
-        o.WriteLine($"          holds {p.Plugin}" + string.Concat(archives.Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
+        o.WriteLine($"          holds {p.Plugin}" + string.Concat(archives.Concat(p.ZipArchives).Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
         o.WriteLine($"check:    {p.Checker ?? "sf-mod-check or sfmodcheck from PATH"}{(p.CheckRequired ? ", required" : ", a missing checker is a WARNING")}"
             + (p.CheckArgs.Count > 0 ? $", extra options {string.Join(" ", p.CheckArgs)}" : ""));
     }

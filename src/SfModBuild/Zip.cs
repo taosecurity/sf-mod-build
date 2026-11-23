@@ -15,7 +15,7 @@ internal static class Zip
 {
     public const string Usage =
         "usage: sf-mod-build zip [<sfmod.json or its folder>] [--verbose] [--log <file>]\n" +
-        "  writes the mod's zip (dist's files plus zip.files) with fixed order and timestamps, so every run gives the same bytes\n" +
+        "  writes the mod's zip (dist's files plus zip.files; zip.archives lists the archives your builder writes there) with fixed order and timestamps, so every run gives the same bytes\n" +
         "  (on the same operating system and .NET version)";
 
     public static readonly ArgSpec Spec = new(Array.Empty<string>(), Array.Empty<string>(), MaxPositionals: 1);
@@ -53,6 +53,12 @@ internal static class Zip
             error = $"there is no \"{project.TexturesBa2Name}\" in {project.Dist}, and the mod has loose textures. Fix: run sf-mod-build pack first (or sf-mod-build build)";
             return null;
         }
+        foreach (var a in project.ZipArchives)
+            if (Common.FilesNamed(project.Dist, a).Count == 0)
+            {
+                error = $"there is no \"{a}\" in {project.Dist}, and {project.File} lists it in zip.archives. Fix: make your builder write it into dist, or take it out of zip.archives";
+                return null;
+            }
         var list = new List<(string, string)>();
         // sorted, so the stray archive reported is the same on every disk
         foreach (var f in Directory.GetFiles(project.Dist).Order(StringComparer.Ordinal))
@@ -69,7 +75,7 @@ internal static class Zip
                 return null;
             }
             // an archive this build makes goes in under its own spelling, even when dist has it in other letter case
-            name = project.ArchiveNames.FirstOrDefault(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase)) ?? name;
+            name = project.ArchiveNames.Concat(project.ZipArchives).FirstOrDefault(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase)) ?? name;
             list.Add((f, name));
         }
         foreach (var (source, inZip) in project.ZipFiles)

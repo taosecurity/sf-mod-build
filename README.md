@@ -133,7 +133,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.2.1.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.3.0.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -142,14 +142,14 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.2.1-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.2.1-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
+- **As a program**: download `sf-mod-build-0.3.0-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.3.0-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
   `sha256sum -c SHA256SUMS` in the download folder checks every file, from 0.2.1 on). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.2.1.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.3.0.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -194,7 +194,7 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.4.2 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.4.2 is the
-  BuildKit version sf-mod-build 0.2.1 was tested with. The starter plugin it makes is byte for byte the same as
+  BuildKit version sf-mod-build 0.3.0 was tested with. The starter plugin it makes is byte for byte the same as
   with BuildKit 0.4.0, which earlier versions of the template used.
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
@@ -217,7 +217,7 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Runs the builder (`dotnet run -c Release --project <builder> -- <args>`) to write the plugin into dist (dist is emptied first). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make stops it (exit 2, naming the file); `zip.files` takes no archives. |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does a listed archive that isn't in dist. `zip.files` takes no archives. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
@@ -259,7 +259,8 @@ allowed.
   "zip": {
     "name": "{name}-{version}.zip",            // the zip's name (default {name}-{version}.zip)
     "folder": ".",                             // where the zip is written (default: the sfmod.json folder)
-    "files": { "README.md": "README-{name}.md" }   // extra files: file here -> name inside the zip (never .psc or .ba2)
+    "files": { "README.md": "README-{name}.md" },  // extra files: file here -> name inside the zip (never .psc or .ba2)
+    "archives": ["MyMod - Extra.ba2"]          // archives your builder writes into dist itself: they ship in the zip
   },
   "check": {
     "checker": "path/to/sf-mod-check.exe",     // default: sf-mod-check or sfmodcheck on PATH
@@ -336,14 +337,17 @@ creations-out.
 Any other `.ba2` in dist that the build doesn't make stops `zip` (and `pack` with `"xbox": true`)
 with a RESULT line naming it, so a build never passes while silently leaving out an archive. Without `"xbox": true`,
 `pack` names each such archive in a WARNING line and goes on, so you hear about it before `zip`. The fix is to delete it
-from dist: sf-mod-build ships only the archives it builds. `zip.files` takes no archives either; `validate`
-reports a `.ba2` there as a PROBLEM. The mod's own archives go into the zip under their usual names, even when dist
+from dist: sf-mod-build ships only the archives it builds, plus the ones you list in `zip.archives`. `zip.files`
+takes no archives; `validate` reports a `.ba2` there as a PROBLEM. The mod's own archives go into the zip under their usual names, even when dist
 has them spelled in other letter case.
 
 ### Limits
 
-- Archives your builder writes itself aren't supported: put those files in the assets folder instead, so `pack`
-  builds them into the mod's own archives.
+- An archive your builder writes itself has to be listed in `zip.archives` (file names in dist, for example
+  `["MyMod - Extra.ba2"]`) to ship. `zip` stops, naming the file, when a listed archive isn't in dist. It can't be
+  one of the names `pack` makes (`<plugin> - Main.ba2`, `<plugin> - Textures.ba2`). sf-mod-build doesn't check what
+  is inside it. With `"xbox": true` a listed archive is copied into creations-out as it is, so it must already
+  be right for the Xbox if you want it there.
 - With `"xbox": true` and nothing left to pack, `pack` deletes only the mod's old archives from creations-out; the
   plugin and other files there stay as the last build left them, so creations-out isn't refreshed on that path.
 - creations-out takes dist's files only (the plugin and the archives). Other `zip.files` entries, such as a README
