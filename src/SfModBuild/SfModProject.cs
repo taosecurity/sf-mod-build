@@ -1159,9 +1159,12 @@ internal sealed class SfModProject
                     var source = PathOf(e.Name, field);
                     if (source != null && (NamesFolder(e.Name) || !System.IO.File.Exists(source)))
                     {
+                        var missing = !Directory.Exists(source) && !NamesFolder(e.Name);
                         Error(field, Directory.Exists(source) ? $"{source} is a folder; zip.files takes files."
                             : NamesFolder(e.Name) ? $"\"{e.Name}\" ends in a slash, so it names a folder; zip.files takes files."
-                            : $"{source} isn't there.", "give a file, relative to sfmod.json.");
+                            : $"{source} isn't there.",
+                            missing ? "give a file that is there before the build, relative to sfmod.json. A file that your builder or a steps command makes goes in dist instead, because zip takes dist's files as they are (a steps.afterPlugin command can rename it there)."
+                                : "give a file, relative to sfmod.json.");
                         source = null;
                     }
                     if (!Placeholders(target, field, ZipPlaceholders)) continue;

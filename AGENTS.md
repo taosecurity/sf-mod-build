@@ -26,7 +26,7 @@ background; this file has what to run.
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
 5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.2]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.3.0 was tested with BuildKit 0.4.2;
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.4.0 was tested with BuildKit 0.4.2;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -97,7 +97,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Check the INI settings of a Mod Organizer 2 profile: `sf-mod-build doctor --my-games "<profile folder>"`.
 - Run one more job of the mod's own after the plugin or the archives are made (copy voice files, move Strings
   tables, check the archives): add it to `steps.afterPlugin` or `steps.afterPack` in `sfmod.json` (section 6),
-  then `sf-mod-build validate` to see its `runs:` line.
+  then `sf-mod-build validate` to see its `runs:` line. A file a step makes and that should ship goes in dist
+  (zip takes dist's files); `zip.files` takes only files that are there before the build.
 - Ship a voice archive or a ready archive (another author's original): add an entry to the top-level `archives`
   list, `{ "suffix": "Voices", "source": "Voices", "compression": "none" }` (a folder laid out like Data, packed
   uncompressed so the `.wem` files play) or `{ "suffix": "Textures", "file": "Original/MyMod - Textures.ba2" }`

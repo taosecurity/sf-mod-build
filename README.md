@@ -195,7 +195,7 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.4.2 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.4.2 is the
-  BuildKit version sf-mod-build 0.3.0 was tested with. The starter plugin it makes is byte for byte the same as
+  BuildKit version sf-mod-build 0.4.0 was tested with. The starter plugin it makes is byte for byte the same as
   with BuildKit 0.4.0, which earlier versions of the template used.
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
@@ -342,6 +342,9 @@ in dist, checking the archives) still builds with one `sf-mod-build build`.
   RESULT line names the command, for example
   `RESULT: FAILED at steps.afterPack[1] (python.exe exited with code 3)`. The commands after it don't run, and a
   failed builder or Archive2 run skips the steps.
+- A file that a step (or the builder) makes and that should ship goes in dist, because zip takes dist's files as
+  they are; a step can rename it there. `zip.files` takes only files that are there before the build, since
+  `validate` checks that each one exists.
 
 ```jsonc
 "steps": { "afterPlugin": [["python", "tools/after.py", "{dist}/{plugin}.esm", "{name} {version}"]] }

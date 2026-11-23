@@ -345,6 +345,18 @@ public partial class SfModProjectTests
     }
 
     [Fact]
+    public void MissingZipFileFixSaysWhereABuiltFileGoes()
+    {
+        // A file the builder or a step makes isn't there at validate; the fix must say to put it in dist instead
+        // (bug hunt, 2026-11-23: the old fix only said "give a file").
+        using var t = Mod();
+        var (_, problems) = Load(t, Good.Replace("\"LICENSE\":", "\"LICENSE.txt\":"));
+        var problem = Assert.Single(problems, x => x.Field == "zip.files[\"LICENSE.txt\"]");
+        Assert.Contains("dist", problem.Fix);
+        Assert.Contains("steps.afterPlugin", problem.Fix);
+    }
+
+    [Fact]
     public void ZipArchivesLoadsAndShowsInValidateOrder()
     {
         using var t = Mod();
