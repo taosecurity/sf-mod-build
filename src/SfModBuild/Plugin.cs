@@ -1,6 +1,7 @@
 // sf-mod-build plugin [sfmod.json]: empties dist, then makes the plugin there with the project's builder: a .NET
 // project (dotnet run -c Release --project <builder> -- <args>), any command (builder.command, then <args>), or a
-// ready plugin copied in (builder.prebuilt). Placeholders in the arguments are filled in first.
+// ready plugin copied in (builder.prebuilt). Placeholders in the arguments are filled in first. Every plugin in parts
+// must be in dist when the builder ends.
 // Exit 0 when the plugin is there, 1 when the builder failed, 2 bad input or setup.
 namespace SfModBuild;
 
@@ -9,7 +10,8 @@ internal static class Plugin
     public const string Usage =
         "usage: sf-mod-build plugin [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
         "  makes the plugin in dist (dist is emptied first) with the mod's builder: a .NET project (dotnet run -c Release),\n" +
-        "  a command from builder.command, or a ready plugin copied from builder.prebuilt; then runs steps.afterPlugin";
+        "  a command from builder.command, or a ready plugin copied from builder.prebuilt; checks that every plugin in\n" +
+        "  parts is there too; then runs steps.afterPlugin";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
 
@@ -120,7 +122,7 @@ internal static class Plugin
     {
         var keep = new List<string> { project.Folder, project.Stage };
         keep.AddRange(project.BuilderFolders);
-        if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
+        keep.AddRange(project.AllScriptSources);
         return Common.UnsafeToEmpty("dist", project.Dist, project.Folder, keep, gameFolders);
     }
 
@@ -198,6 +200,20 @@ internal static class Plugin
             return ExitCodes.Failed;
         }
         stdout.WriteLine($"built    {plugin} ({new FileInfo(plugin).Length} bytes)");
+        var missing = project.Parts.Select(x => x.Plugin).Where(x => !File.Exists(Path.Combine(project.Dist, x))).ToList();
+        foreach (var part in project.Parts.Where(x => !missing.Contains(x.Plugin)))
+            stdout.WriteLine($"built    {Path.Combine(project.Dist, part.Plugin)} ({new FileInfo(Path.Combine(project.Dist, part.Plugin)).Length} bytes)");
+        if (missing.Count > 0)
+        {
+            Log.Write($"parts missing from {project.Dist}: {string.Join(", ", missing)}");
+            stdout.WriteLine($"RESULT: FAILED, the builder said OK but wrote no {string.Join(" and no ", missing)} in {project.Dist}, and parts in {project.File} lists {(missing.Count == 1 ? "it" : "them")}. Fix: make the builder write every part plugin into dist ({{dist}}), or take the plugin out of parts.");
+            return ExitCodes.Failed;
+        }
+        if (project.Parts.Count > 0)
+        {
+            stdout.WriteLine($"RESULT: OK, {project.Plugin} and {project.Parts.Count} part plugin(s) built into {project.Dist}");
+            return ExitCodes.Ok;
+        }
         stdout.WriteLine($"RESULT: OK, {project.Plugin} built into {project.Dist}");
         return ExitCodes.Ok;
     }

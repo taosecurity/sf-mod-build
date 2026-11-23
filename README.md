@@ -215,10 +215,10 @@ when it isn't found by itself. Every command has `--help`.
 |---|---|
 | `sf-mod-build doctor [--game <folder>] [--checker <exe>] [--my-games <folder>]` | Finds the game, the Creation Kit's tools, .NET and the checker, and says how to get anything missing. Then it checks your setup (see [Setup checks](#setup-checks-in-doctor)). |
 | `sf-mod-build validate [<sfmod.json>]` | Checks the project file and prints what a build would use. Each problem names the field and the fix. |
-| `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
-| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
-| `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. It also makes each archive in the `archives` list (see [More archives](#more-archives-voices-and-ready-archives)). Then it runs your `steps.afterPack` commands. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives` that isn't in dist. `zip.files` takes no archives. |
+| `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first), and each part's scripts into `<stage>\parts\<part>\Scripts` (see [More plugins](#more-plugins-parts)). Never `-release`: asking for it is refused with the reason. |
+| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). It stops (exit 1) when a plugin listed in `parts` isn't in dist. Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
+| `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. It also packs each part's scripts into `<part> - Main.ba2` and makes each archive in the `archives` list (see [More archives](#more-archives-voices-and-ready-archives)). Then it runs your `steps.afterPack` commands. |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives`, or a plugin or archive of `parts`, that isn't in dist. `zip.files` takes no archives. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
@@ -266,6 +266,10 @@ allowed.
   "archives": [                                // more archives pack makes in dist, "<plugin> - <suffix>.ba2" (optional)
     { "suffix": "Voices", "source": "Voices", "compression": "none" },  // a folder laid out like Data, packed ...
     { "suffix": "Extra", "file": "Original/MyMod - Extra.ba2" }        // ... or a ready archive, copied as it is
+  ],
+  "parts": [                                   // other plugins your builder writes into dist (optional)
+    { "plugin": "MyMod-Extra.esm", "scripts": { "namespaces": ["MYMX"] } },  // with its own scripts ...
+    { "plugin": "MyMod-Patch.esm" }                                         // ... or none
   ],
   "zip": {
     "name": "{name}-{version}.zip",            // the zip's name (default {name}-{version}.zip)
@@ -437,6 +441,42 @@ be there when `validate` runs.
 An archive can't be in both `archives` and `zip.archives`. In this version
 `archives` can't be used with `"xbox": true` (`validate` reports it as a PROBLEM): `pack` can't make a correct Xbox
 voice archive from PC `.wem` files, and a ready archive has no Xbox copy.
+
+### More plugins: parts
+
+When your builder writes more than one plugin (a main plugin and an add-on, for example), list the others in
+`parts`. Each entry has a `plugin`, the file name the builder writes into dist, and optionally its own `scripts`,
+written like the top-level `scripts` (its `source` defaults to the top-level source folders).
+
+```jsonc
+"parts": [
+  { "plugin": "MyMod-Extra.esm", "scripts": { "namespaces": ["MYMX"] } },
+  { "plugin": "MyMod-Patch.esm" }
+]
+```
+
+- `compile` compiles a part's scripts into `<stage>\parts\<part>\Scripts` (`<part>` is the plugin name without
+  the extension), with the part's own source folders and then the top-level ones as imports, so they can use the
+  main plugin's scripts.
+- `pack` packs them into `<part> - Main.ba2` in dist. A part without scripts gets no archive.
+- `plugin` stops (exit 1) when the builder didn't write every part plugin into dist, and `zip` stops (exit 2) when a
+  part plugin or a part's archive isn't there. The zip holds every plugin and archive; one zip for all of them.
+- `validate` prints a `part:` line for each one, and reports as a PROBLEM a part plugin whose name (without the
+  extension) is the main plugin's or another part's, a name that breaks the plugin-name rules, a script that is in
+  two places (the top level and a part, or two parts), and `parts` with `builder.prebuilt` (which copies only one
+  plugin). In this version a part with scripts can't be used with `"xbox": true`.
+
+```
+> sf-mod-build validate
+...
+part:     MyMod-Extra.esm (archive "MyMod-Extra - Main.ba2")
+          scripts from C:\Mods\MyMod\Scripts\Source
+          namespaces MYMX
+part:     MyMod-Patch.esm (no scripts, so no archive)
+...
+          holds MyMod.esm, MyMod-Extra.esm, MyMod-Patch.esm, MyMod - Main.ba2, MyMod-Extra - Main.ba2
+RESULT: OK
+```
 
 ### Limits
 

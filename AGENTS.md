@@ -99,6 +99,9 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   list, `{ "suffix": "Voices", "source": "Voices", "compression": "none" }` (a folder laid out like Data, packed
   uncompressed so the `.wem` files play) or `{ "suffix": "Textures", "file": "Original/MyMod - Textures.ba2" }`
   (copied as it is). pack makes `<Plugin> - <suffix>.ba2` in dist and zip ships it. Not with `"xbox": true`.
+- A builder that writes more than one plugin: list the others in `parts`, `[{ "plugin": "MyMod-Extra.esm",
+  "scripts": { "namespaces": ["MYMX"] } }]` (scripts optional). Each part's scripts go into `<Part> - Main.ba2`, and
+  one zip holds every plugin. A part with scripts is refused with `"xbox": true`.
 - One step at a time: `sf-mod-build compile`, `sf-mod-build plugin`, `sf-mod-build pack`, `sf-mod-build zip`,
   `sf-mod-build check` (each needs the steps before it to have run).
 - Troubleshoot: add `--verbose`, or `--log sf-mod-build-log.txt`, to any command.
@@ -132,6 +135,11 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   archive or zip. A `file` is a ready `.ba2` that must exist (it may be outside the mod; it is only read);
   `compression` and `format` are refused with it. The suffix may be `Main` or `Textures` only when pack doesn't make
   that archive itself. Refused with `"xbox": true`, and a name can't also be in `zip.archives`.
+- Optional `parts`: a list of `{ "plugin", "scripts" }`, the other plugins the builder writes into dist. `scripts`
+  is optional and written like the top-level one; its `source` defaults to the top-level source folders. validate
+  refuses a part plugin whose name without the extension is the main plugin's or another part's, a name that
+  breaks the plugin-name rules, a script in two places (the top level and a part, or two parts), `parts` with
+  `builder.prebuilt`, and a part with scripts with `"xbox": true`.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
   `CreationKitCustom.ini` in the game folder, and `Data\Scripts\Source` (read, never written).
@@ -142,6 +150,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - `<dist>\<Plugin>.esm` and `<dist>\<Plugin> - Main.ba2` (default `dist`), emptied and refilled by `plugin`.
 - With loose textures: `<dist>\<Plugin> - Textures.ba2`. A mod with loose files but no scripts may have no Main
   archive. pack copies the loose files into `<stage>\pack\` first.
+- With `parts`: each part plugin in dist (written by the builder; `plugin` exits 1 when one is missing), and for a
+  part with scripts `<stage>\parts\<Part>\Scripts\<Namespace>\*.pex` and `<dist>\<Part> - Main.ba2`, where
+  `<Part>` is the part plugin's name without the extension. zip ships them all and stops with exit 2 when one
+  is missing.
 - With an `archives` list: `<dist>\<Plugin> - <suffix>.ba2` for each entry (packed from its `source`, or copied from
   its `file`). zip ships them, and stops with exit 2, naming the archive, when one isn't in dist.
 - With `"xbox": true`: `creations-out\` with dist's files plus `<Plugin> - Main_xbox.ba2` (and
@@ -186,6 +198,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   `.dds` and sounds `.wem`; the Creation Kit's own tools make those. A PC `.wem` is silent on Xbox and PlayStation 5.
 - Ships no game files; uses the Creation Kit's own tools from the person's game folder.
 - `compile` and `pack` need Windows (the Creation Kit's tools are Windows programs).
+- A project with `parts` makes one zip that holds every plugin and archive; to ship one zip per plugin, split it
+  in the person's own script after `sf-mod-build build`.
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
 - Don't hand-edit files in dist, stage or creations-out: the next build empties them.

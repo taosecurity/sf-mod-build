@@ -34,6 +34,11 @@
 //         "compression": "none" },                 compression "default" or "none" (sound), format "general" or "dds"
 //       { "suffix": "Extra", "file": "Original/MyMod - Extra.ba2" }   ... or a ready archive, copied as it is
 //     ],                                           Main or Textures only when pack doesn't make that one; not with xbox
+//     "parts": [                                   other plugins your builder writes into dist (leave out when unused)
+//       { "plugin": "MyMod-Extra.esm",             each ships in the zip; with scripts (same shape as above, source
+//         "scripts": { "namespaces": ["MYMX"] } }, defaulting to the top-level source) it gets "<part> - Main.ba2"
+//       { "plugin": "MyMod-Patch.esm" }            ... or none (a records-only plugin); scripts not with xbox
+//     ],
 //     "zip": {
 //       "name": "{name}-{version}.zip",            the zip's name (default {name}-{version}.zip)
 //       "folder": ".",                             where the zip is written (default: the sfmod.json folder)
@@ -57,6 +62,12 @@
 // itself: read a downloaded mod's sfmod.json (validate prints every command as a "runs:" line) before building it. A
 // program with a / or \ in it is a path relative to this file's folder; a bare name is looked up on PATH. The working
 // folder is this file's folder. A step command that exits non-zero stops plugin or pack, naming the command.
+//
+// A part's scripts compile into <stage>/parts/<part plugin without extension>/Scripts, with the part's source folders
+// and then the top-level ones as imports, and pack makes "<part plugin without extension> - Main.ba2" from them. A
+// part plugin can't share its name (without the extension) with the main plugin or another part, and a script can be
+// in only one place (the top level or one part). plugin checks that the builder wrote every part plugin into dist, so
+// parts can't be used with builder.prebuilt.
 //
 // An archives source folder must be inside the mod's folder and apart from dist, stage and creations-out; it may be
 // filled by an afterPlugin step, so pack (not validate) checks that it is there and holds files, with the assets rules
@@ -97,7 +108,24 @@ internal sealed class SfModProject
     /// assets, then the entries of the top-level archives list.</summary>
     public IEnumerable<string> ArchiveNames =>
         (HasMainArchive ? new[] { Ba2Name } : Array.Empty<string>()).Concat(HasTexturesArchive ? new[] { TexturesBa2Name } : Array.Empty<string>())
+        .Concat(Parts.Where(x => x.Scripts != null).Select(x => x.Ba2Name))
         .Concat(Archives.Select(a => a.Name));
+    /// <summary>parts: the other plugins the builder writes into dist, each with its own scripts or none.</summary>
+    public IReadOnlyList<Part> Parts { get; init; } = Array.Empty<Part>();
+    /// <summary>Every script source folder: the top-level ones and each part's (never emptied, never packed).</summary>
+    public IEnumerable<string> AllScriptSources =>
+        (Scripts?.Sources ?? Array.Empty<string>()).Concat(Parts.SelectMany(x => x.Scripts?.Sources ?? Array.Empty<string>()))
+        .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>One entry of parts: another plugin in dist and, optionally, its own scripts, which compile into
+    /// &lt;stage&gt;/parts/&lt;plugin base&gt;/Scripts and are packed into "&lt;plugin base&gt; - Main.ba2".</summary>
+    public sealed record Part(string Plugin, ScriptsSection? Scripts)
+    {
+        public string PluginBase => Path.GetFileNameWithoutExtension(Plugin);
+        public string Ba2Name => $"{PluginBase} - Main.ba2";
+        /// <summary>The part's stage folder (the archive's root): &lt;stage&gt;/parts/&lt;plugin base&gt;.</summary>
+        public string StageIn(string stage) => System.IO.Path.Combine(stage, "parts", PluginBase);
+    }
     /// <summary>The top-level archives list: more archives pack makes in dist, each "&lt;plugin&gt; - &lt;suffix&gt;.ba2".</summary>
     public IReadOnlyList<ExtraArchive> Archives { get; init; } = Array.Empty<ExtraArchive>();
 
@@ -179,7 +207,8 @@ internal sealed class SfModProject
 
     public const string FileName = "sfmod.json";
 
-    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "archives", "zip", "check" };
+    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "archives", "parts", "zip", "check" };
+    static readonly string[] PartFields = { "plugin", "scripts" };
     static readonly string[] ArchiveFields = { "suffix", "source", "file", "compression", "format" };
     static readonly string[] StepsFields = { "afterPlugin", "afterPack" };
     public static readonly string[] StepPlaceholders = { "data", "dist", "scripts", "stage", "version", "name", "plugin" };
@@ -302,6 +331,7 @@ internal sealed class SfModProject
             var creationsOut = Folder(root, "creationsOut", "creations-out");
             if (creationsOut != null && SamePath(creationsOut, folder))
                 Error("creationsOut", "it is the mod's own folder, which pack empties when xbox is on.", "use a folder of its own, for example \"creations-out\".");
+            var parts = Parts(root, plugin, scripts, xbox, builder?.Prebuilt != null);
             // The tool empties these three before writing, so they must be folders of their own inside the mod's folder.
             foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
                 if (path != null && !SamePath(path, folder) && !IsUnder(path, folder))
@@ -332,6 +362,8 @@ internal sealed class SfModProject
                 if (builder?.Prebuilt != null) hold.Add(("the prebuilt plugin", builder.Prebuilt));
                 hold.AddRange(programs.Where(x => x.Field.StartsWith("steps.", StringComparison.Ordinal)).Select(x => ("a steps program", x.File!)));
                 if (scripts != null) hold.AddRange(scripts.Sources.Select(s => ("a script source folder", s)));
+                if (parts != null)
+                    hold.AddRange(parts.SelectMany(x => x.Scripts?.Sources ?? Array.Empty<string>()).Select(s => ("a part's script source folder", s)));
                 assets = Assets(root, xbox, keep, hold, out assetsOk);
             }
             var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 }, assets is { Textures.Count: > 0 },
@@ -340,22 +372,28 @@ internal sealed class SfModProject
             var (checker, checkRequired, checkArgs) = Check(root);
 
             if (plugin == null || name == null || version == null || builder == null || steps == null || dist == null
-                || stage == null || creationsOut == null || !assetsOk || extra == null || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
+                || stage == null || creationsOut == null || parts == null || !assetsOk || extra == null || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
                 File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts, Assets = assets,
                 BuilderProject = builder.Project, BuilderCommand = builder.Command, BuilderPrebuilt = builder.Prebuilt,
                 BuilderArgs = builder.Args, AfterPlugin = steps.Value.AfterPlugin, AfterPack = steps.Value.AfterPack, Dist = dist, Stage = stage, Xbox = xbox,
-                CreationsOut = creationsOut, Archives = extra, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
+                CreationsOut = creationsOut, Parts = parts, Archives = extra, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
             foreach (var a in zipArchives)
                 if (extra.Any(x => string.Equals(x.Name, a, StringComparison.OrdinalIgnoreCase)))
                     Error("zip.archives", $"\"{a}\" is also in the archives list, which pack makes.", "list it in one place only: in archives when pack makes or copies it, in zip.archives when your builder writes it.");
-            // archives are refused per entry above, so only the plugin's name is left to check
+            // a part's archive may not take a name another archive of this build has
+            var otherArchives = new[] { p.Ba2Name, p.TexturesBa2Name, p.XboxBa2Name, p.XboxTexturesBa2Name }
+                .Concat(extra.Select(x => x.Name)).Concat(zipArchives).ToList();
+            for (var i = 0; i < parts.Count; i++)
+                if (parts[i].Scripts != null && otherArchives.Contains(parts[i].Ba2Name, StringComparer.OrdinalIgnoreCase))
+                    Error($"parts[{i}].plugin", $"its archive \"{parts[i].Ba2Name}\" has the name of another archive of this build.", "give the part plugin another name, or rename the other archive's suffix.");
+            // archives are refused per entry above, so only the plugins' names are left to check
             foreach (var (_, inZip) in zipFiles)
-                if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase) || parts.Any(x => string.Equals(inZip, x.Plugin, StringComparison.OrdinalIgnoreCase)))
                     Error("zip.files", $"\"{inZip}\" is a name the build itself puts in the zip (the plugin and its archives come from dist).", "leave the plugin and the archives out of zip.files.");
             // all four of pack's names are refused, made by this build or not: pack deletes the PC ones from dist as
             // old leftovers and writes the Xbox ones into creations-out over whatever is there
@@ -368,6 +406,61 @@ internal sealed class SfModProject
                 Error("zip.archives", "it can't be used with \"xbox\": true, because pack can't make the Xbox copies of archives your builder writes, so the Creations set would lack them.",
                     "leave \"xbox\" off for this mod, or have pack make the archives instead (put the files in assets.source and leave zip.archives out).");
             return p;
+        }
+
+        /// <summary>parts: the other plugins the builder writes into dist, each with optional scripts of its own (the
+        /// source defaults to the top-level source folders). Empty when left out; null when it has a PROBLEM.</summary>
+        List<SfModProject.Part>? Parts(JsonElement root, string? plugin, SfModProject.ScriptsSection? scripts, bool xbox, bool prebuilt)
+        {
+            var list = new List<SfModProject.Part>();
+            if (!root.TryGetProperty("parts", out var l) || l.ValueKind == JsonValueKind.Null) return list;
+            const string example = "[ { \"plugin\": \"MyMod-Extra.esm\", \"scripts\": { \"namespaces\": [\"MYMX\"] } } ]";
+            if (l.ValueKind != JsonValueKind.Array)
+            {
+                Error("parts", $"it is a {Kind(l)}, not a list.", $"write it as a list of plugins, for example \"parts\": {example}.");
+                return null;
+            }
+            var before = problems.Count(x => !x.IsWarning);
+            if (prebuilt && l.GetArrayLength() > 0)
+                Error("parts", "a prebuilt plugin copies only the one plugin, so the part plugins would never be in dist.",
+                    "use \"command\" with a program that writes every plugin into dist (it may only copy them), or leave parts out.");
+            // the stems are compared, because a plugin's archive is named after its stem: MyMod.esm and MyMod.esp share one
+            var stems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (plugin != null) stems[Path.GetFileNameWithoutExtension(plugin)] = "the main plugin";
+            var owner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var x in Compile.ScriptList(scripts)) owner[x.Name] = "the top-level scripts";
+            var i = 0;
+            foreach (var e in l.EnumerateArray())
+            {
+                var at = $"parts[{i++}]";
+                if (e.ValueKind != JsonValueKind.Object)
+                {
+                    Error(at, $"it is a {Kind(e)}, not an object.", $"write each part as an object, for example {example}.");
+                    continue;
+                }
+                Fields(e, at + ".", PartFields);
+                var name = String(e, "plugin", required: true, example: "\"MyMod-Extra.esm\"", field: at + ".plugin");
+                if (name != null) name = CheckPlugin(name, at + ".plugin");
+                if (name != null && stems.TryGetValue(Path.GetFileNameWithoutExtension(name), out var clash))
+                {
+                    Error(at + ".plugin", $"\"{name}\" has the same name as {clash} (without the extension), so the two would share one archive name.", "give each plugin a name of its own, for example \"MyMod-Extra.esm\".");
+                    name = null;
+                }
+                if (name != null) stems[Path.GetFileNameWithoutExtension(name)] = $"{at}.plugin";
+                var own = Scripts(e, at + ".scripts", scripts?.Sources);
+                if (own != null)
+                {
+                    if (xbox)
+                        Error(at + ".scripts", "a part with scripts can't be used with \"xbox\": true in this version: pack makes the Xbox archive of the main plugin only, so the Creations set would lack the part's scripts.",
+                            "leave \"xbox\" off for this mod, or move the part's scripts into the top-level scripts.");
+                    foreach (var x in Compile.ScriptList(own))
+                        if (owner.TryGetValue(x.Name, out var first))
+                            Error(at + ".scripts", $"the script {x.Name} is also in {first}, so two archives would hold it and whichever loaded last would win.", "list each script in one place only.");
+                        else owner[x.Name] = at + ".scripts";
+                }
+                if (name != null) list.Add(new SfModProject.Part(name, own));
+            }
+            return problems.Count(x => !x.IsWarning) == before ? list : null;
         }
 
         /// <summary>The top-level archives list: more archives pack makes in dist. A source folder is only checked for
@@ -678,23 +771,23 @@ internal sealed class SfModProject
             return list;
         }
 
-        string? CheckPlugin(string plugin)
+        string? CheckPlugin(string plugin, string field = "plugin")
         {
             var ext = Path.GetExtension(plugin);
             if (!PluginExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
             {
-                Error("plugin", $"\"{plugin}\" doesn't end in .esm, .esp or .esl.", "give the plugin's file name with its extension, for example \"MyMod.esm\".");
+                Error(field, $"\"{plugin}\" doesn't end in .esm, .esp or .esl.", "give the plugin's file name with its extension, for example \"MyMod.esm\".");
                 return null;
             }
             if (!GoodFileName(plugin) || plugin.Contains('/') || plugin.Contains('\\'))
             {
-                Error("plugin", $"\"{plugin}\" isn't a plain file name.", "give only the file name the builder writes into dist, for example \"MyMod.esm\" (no folder).");
+                Error(field, $"\"{plugin}\" isn't a plain file name.", "give only the file name the builder writes into dist, for example \"MyMod.esm\" (no folder).");
                 return null;
             }
             var stem = Path.GetFileNameWithoutExtension(plugin);
             if (OfficialEndings.Any(o => stem.Equals(o, StringComparison.OrdinalIgnoreCase)) || SfbgsName.IsMatch(stem))
             {
-                Error("plugin", ext.Equals(".esm", StringComparison.OrdinalIgnoreCase)
+                Error(field, ext.Equals(".esm", StringComparison.OrdinalIgnoreCase)
                         ? $"\"{plugin}\" is the name of one of the game's own plugins; installing the mod would replace it."
                         : $"\"{plugin}\" uses the name of one of the game's own plugins; Starfield removes such names from Plugins.txt, so the mod would stop loading.",
                     $"give the mod a name of its own, for example \"My{stem}Addon{ext}\".");
@@ -702,51 +795,52 @@ internal sealed class SfModProject
             }
             foreach (var official in OfficialEndings)
                 if (stem.Length > official.Length && stem.EndsWith(official, StringComparison.OrdinalIgnoreCase))
-                    Error("plugin", $"\"{plugin}\" ends in the official plugin name \"{official}\"; Starfield removes such names from Plugins.txt, so the mod would stop loading.",
+                    Error(field, $"\"{plugin}\" ends in the official plugin name \"{official}\"; Starfield removes such names from Plugins.txt, so the mod would stop loading.",
                         $"add a word after it, for example \"{stem}Addon{ext}\".");
             if (stem.StartsWith("BlueprintShips-", StringComparison.OrdinalIgnoreCase))
-                Error("plugin", $"\"{plugin}\" starts with \"BlueprintShips-\", which Starfield removes from Plugins.txt, so the mod would stop loading.",
+                Error(field, $"\"{plugin}\" starts with \"BlueprintShips-\", which Starfield removes from Plugins.txt, so the mod would stop loading.",
                     "pick a name that doesn't start with BlueprintShips-.");
             // Official Creations are named SFBGS001.esm and so on. Endings like "-SFBGS003" are untested in game,
             // but the names the game is known to drop are all official ones, so warn rather than refuse.
             if (SfbgsEnding.IsMatch(stem))
-                Warn("plugin", $"\"{plugin}\" ends in an official Creation's name (SFBGS...); Starfield may remove it from Plugins.txt like other official names, so the mod could stop loading.",
+                Warn(field, $"\"{plugin}\" ends in an official Creation's name (SFBGS...); Starfield may remove it from Plugins.txt like other official names, so the mod could stop loading.",
                     $"add a word after it, for example \"{stem}Addon{ext}\".");
             return plugin;
         }
 
-        SfModProject.ScriptsSection? Scripts(JsonElement root)
+        SfModProject.ScriptsSection? Scripts(JsonElement root, string sf = "scripts", IReadOnlyList<string>? defaultSources = null)
         {
             if (!root.TryGetProperty("scripts", out var s) || s.ValueKind == JsonValueKind.Null) return null;
             if (s.ValueKind != JsonValueKind.Object)
             {
-                Error("scripts", $"it is a {Kind(s)}, not an object.", "write it like \"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] }, or leave it out when the mod has no scripts.");
+                Error(sf, $"it is a {Kind(s)}, not an object.", "write it like \"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] }, or leave it out when the mod has no scripts.");
                 return null;
             }
-            Fields(s, "scripts.", ScriptsFields);
+            Fields(s, sf + ".", ScriptsFields);
             var sources = new List<string>();
             if (s.TryGetProperty("source", out var src))
             {
-                if (src.ValueKind == JsonValueKind.String) AddSource(src.GetString()!, "scripts.source", sources);
+                if (src.ValueKind == JsonValueKind.String) AddSource(src.GetString()!, sf + ".source", sources);
                 else if (src.ValueKind == JsonValueKind.Array)
                 {
                     var i = 0;
                     foreach (var e in src.EnumerateArray())
                     {
-                        if (e.ValueKind == JsonValueKind.String) AddSource(e.GetString()!, $"scripts.source[{i}]", sources);
-                        else Error($"scripts.source[{i}]", $"it is a {Kind(e)}, not a folder name.", "write each folder as a string, for example \"Scripts/Source\".");
+                        if (e.ValueKind == JsonValueKind.String) AddSource(e.GetString()!, $"{sf}.source[{i}]", sources);
+                        else Error($"{sf}.source[{i}]", $"it is a {Kind(e)}, not a folder name.", "write each folder as a string, for example \"Scripts/Source\".");
                         i++;
                     }
-                    if (i == 0) Error("scripts.source", "the list is empty.", "give at least one folder, for example \"Scripts/Source\".");
+                    if (i == 0) Error(sf + ".source", "the list is empty.", "give at least one folder, for example \"Scripts/Source\".");
                 }
-                else Error("scripts.source", $"it is a {Kind(src)}.", "give a folder, for example \"Scripts/Source\", or a list of folders.");
+                else Error(sf + ".source", $"it is a {Kind(src)}.", "give a folder, for example \"Scripts/Source\", or a list of folders.");
             }
-            else AddSource("Scripts/Source", "scripts.source (default Scripts/Source)", sources);
+            else if (defaultSources != null) sources.AddRange(defaultSources);
+            else AddSource("Scripts/Source", sf + ".source (default Scripts/Source)", sources);
 
-            var namespaces = StringList(s, "namespaces", "scripts.namespaces", "[\"MYM\"]");
-            var files = StringList(s, "files", "scripts.files", "[\"MYM/MyQuestScript\"]");
+            var namespaces = StringList(s, "namespaces", sf + ".namespaces", "[\"MYM\"]");
+            var files = StringList(s, "files", sf + ".files", "[\"MYM/MyQuestScript\"]");
             if (namespaces.Count == 0 && files.Count == 0)
-                Error("scripts", "it lists neither namespaces nor files, so there is nothing to compile.",
+                Error(sf, "it lists neither namespaces nor files, so there is nothing to compile.",
                     "add \"namespaces\": [\"<the folder under the source folder that holds your scripts>\"], or leave out \"scripts\" when the mod has none.");
             if (sources.Count == 0) return null;
 
@@ -756,15 +850,15 @@ internal sealed class SfModProject
                 var ns = namespaces[i];
                 if (!Regex.IsMatch(ns, @"^[A-Za-z_][A-Za-z0-9_]*(?:[/\\][A-Za-z_][A-Za-z0-9_]*)*$"))
                 {
-                    Error($"scripts.namespaces[{i}]", $"\"{ns}\" isn't a Papyrus namespace (letters, digits and _, starting with a letter; / between levels).", "give the folder name under the source folder, for example \"MYM\".");
+                    Error($"{sf}.namespaces[{i}]", $"\"{ns}\" isn't a Papyrus namespace (letters, digits and _, starting with a letter; / between levels).", "give the folder name under the source folder, for example \"MYM\".");
                     continue;
                 }
                 var nsPath = ns.Replace('/', '\\').Replace('\\', Path.DirectorySeparatorChar);
                 var where = sources.Select(x => Path.Combine(x, nsPath)).FirstOrDefault(Directory.Exists);
                 if (where == null)
-                    Error($"scripts.namespaces[{i}]", $"there is no folder \"{ns}\" in {string.Join(" or ", sources)}.", "check the spelling, or move the scripts into <source>/<namespace>/.");
+                    Error($"{sf}.namespaces[{i}]", $"there is no folder \"{ns}\" in {string.Join(" or ", sources)}.", "check the spelling, or move the scripts into <source>/<namespace>/.");
                 else if (!Directory.EnumerateFiles(where, "*.psc").Any())
-                    Error($"scripts.namespaces[{i}]", $"{where} holds no .psc files.", "put the namespace's scripts there, or remove it from the list.");
+                    Error($"{sf}.namespaces[{i}]", $"{where} holds no .psc files.", "put the namespace's scripts there, or remove it from the list.");
                 else nsFound.Add(ns.Replace('/', '\\'));
             }
             var fileNames = new List<string>();
@@ -774,14 +868,14 @@ internal sealed class SfModProject
                 if (f.EndsWith(".psc", StringComparison.OrdinalIgnoreCase)) f = f[..^4];
                 if (!Regex.IsMatch(f, @"^(?:[A-Za-z_][A-Za-z0-9_]*\\)*[A-Za-z_][A-Za-z0-9_]*$"))
                 {
-                    Error($"scripts.files[{i}]", $"\"{files[i]}\" isn't a script name like \"Namespace/ScriptName\".", "give the namespace folder and the script name, for example \"MYM/MyQuestScript\".");
+                    Error($"{sf}.files[{i}]", $"\"{files[i]}\" isn't a script name like \"Namespace/ScriptName\".", "give the namespace folder and the script name, for example \"MYM/MyQuestScript\".");
                     continue;
                 }
                 var rel = f.Replace('\\', Path.DirectorySeparatorChar) + ".psc";
                 if (!sources.Any(x => System.IO.File.Exists(Path.Combine(x, rel))))
-                    Error($"scripts.files[{i}]", $"there is no {rel} in {string.Join(" or ", sources)}.", "check the spelling and the namespace folder.");
+                    Error($"{sf}.files[{i}]", $"there is no {rel} in {string.Join(" or ", sources)}.", "check the spelling and the namespace folder.");
                 else if (fileNames.Contains(f, StringComparer.OrdinalIgnoreCase))
-                    Warn($"scripts.files[{i}]", $"\"{files[i]}\" is listed twice.", "list each script once.");
+                    Warn($"{sf}.files[{i}]", $"\"{files[i]}\" is listed twice.", "list each script once.");
                 else fileNames.Add(f);
             }
             return new SfModProject.ScriptsSection { Sources = sources, Namespaces = nsFound, Files = fileNames };

@@ -3,6 +3,7 @@
 #   sf-mod-build-<version>-win-x64.zip           the self-contained Windows program (no .NET runtime needed to run it)
 #   sf-mod-build-template-<version>.zip          the dotnet new sfmod template (dotnet new install <unzipped folder>)
 #   SHA256SUMS                                   sha256 of the three files above
+#   <file>.sha256                                one per file above: "<sha256>  <file>" and an LF
 # The release stays a draft until someone looks it over and publishes it by hand.
 name: release
 
@@ -70,15 +71,23 @@ jobs:
           $text = ($lines -join "`n") + "`n"
           [IO.File]::WriteAllText((Join-Path (Get-Location) 'SHA256SUMS'), $text, [Text.UTF8Encoding]::new($false))
           Get-Content SHA256SUMS
+          # and one <file>.sha256 beside each file (the same line, LF, no BOM), for tools that check one download
+          foreach ($line in $lines) {
+            $name = $line.Substring(66)
+            [IO.File]::WriteAllText((Join-Path (Get-Location) "$name.sha256"), "$line`n", [Text.UTF8Encoding]::new($false))
+          }
       - name: Check the checksums
         working-directory: out
         shell: bash
-        run: sha256sum -c SHA256SUMS
+        run: |
+          sha256sum -c SHA256SUMS
+          for f in *.sha256; do sha256sum -c "$f"; done
+          test "$(ls *.sha256 | wc -l)" -eq "$(wc -l < SHA256SUMS)"
       - name: Draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$env:GITHUB_REF_NAME" (Get-ChildItem out -File).FullName
           --title "sf-mod-build $env:VERSION"
-          --notes "See CHANGELOG.md for what changed. Check the downloads against SHA256SUMS."
+          --notes "See CHANGELOG.md for what changed. Check the downloads against SHA256SUMS or each file's .sha256."
           --draft --verify-tag

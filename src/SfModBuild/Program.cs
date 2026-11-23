@@ -35,11 +35,12 @@ namespace SfModBuild
             "  validate    check a project file (sfmod.json) and show what a build would use\n" +
             "  compile     compile the mod's Papyrus scripts with the Creation Kit's compiler (never -release)\n" +
             "  plugin      make the plugin in dist with the mod's builder: a .NET project (such as a Mutagen builder),\n" +
-            "              any command (builder.command), or a ready plugin copied in (builder.prebuilt); then the\n" +
-            "              project's steps.afterPlugin commands\n" +
+            "              any command (builder.command), or a ready plugin copied in (builder.prebuilt), and check\n" +
+            "              the project's other plugins (parts) are there; then the project's steps.afterPlugin commands\n" +
             "  pack        pack the compiled scripts and loose files into the BA2s with the Creation Kit's Archive2\n" +
-            "              (Main and Textures, and the _xbox ones for Creations), make the project's archives list\n" +
-            "              (packed from a folder, or a ready archive copied); then steps.afterPack\n" +
+            "              (Main and Textures, and the _xbox ones for Creations), pack each part's scripts into\n" +
+            "              \"<part> - Main.ba2\", make the project's archives list (packed from a folder, or a\n" +
+            "              ready archive copied); then steps.afterPack\n" +
             "  zip         write the mod's zip reproducibly (same files, same bytes)\n" +
             "  check       run sf-mod-check (or sfmodcheck) release on the zip\n" +
             "  build       compile, plugin, pack, zip and check in order\n" +

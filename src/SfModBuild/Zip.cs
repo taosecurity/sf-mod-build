@@ -1,6 +1,6 @@
 // sf-mod-build zip [sfmod.json]: writes the mod's Vortex/MO2 zip reproducibly: the same files give the same bytes on
 // every run on the same operating system and .NET version (the zip records the system that made it, and another
-// .NET may compress differently). Contents: dist's top-level files (never zips or .psc) plus each zip.files entry
+// .NET may compress differently). A plugin in parts, or a part's archive, missing from dist stops it. Contents: dist's top-level files (never zips or .psc) plus each zip.files entry
 // under its name in the zip. A .ba2 in dist that this build doesn't make is refused (sf-mod-build ships only the archives
 // it builds and the ones zip.archives lists); the mod's own archives go in under their own spelling, whatever their letter case in dist. Entries
 // are sorted by name (ordinal), use forward slashes, a fixed timestamp (2000-01-01 00:00) and deflate. The zip is
@@ -42,6 +42,19 @@ internal static class Zip
         {
             error = $"there is no {project.Plugin} in {project.Dist}. Fix: run sf-mod-build plugin first (or sf-mod-build build)";
             return null;
+        }
+        foreach (var part in project.Parts)
+        {
+            if (!File.Exists(Path.Combine(project.Dist, part.Plugin)))
+            {
+                error = $"there is no {part.Plugin} in {project.Dist}, and {project.File} lists it in parts. Fix: run sf-mod-build plugin first (or sf-mod-build build)";
+                return null;
+            }
+            if (part.Scripts != null && Common.FilesNamed(project.Dist, part.Ba2Name).Count == 0)
+            {
+                error = $"there is no \"{part.Ba2Name}\" in {project.Dist}, and the part {part.Plugin} has scripts. Fix: run sf-mod-build compile and sf-mod-build pack first (or sf-mod-build build)";
+                return null;
+            }
         }
         if (project.HasMainArchive && Common.FilesNamed(project.Dist, project.Ba2Name).Count == 0)
         {

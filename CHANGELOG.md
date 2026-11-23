@@ -10,6 +10,8 @@
 - `validate` now prints a `runs:` line with the command a build would run. Read it before you build a mod someone else made: `builder.command` runs whatever program it names.
 - `steps.afterPlugin` and `steps.afterPack` in sfmod.json: lists of your own commands, each written like `builder.command`, run in order at the end of `plugin` and at the end of `pack`. Running a step on its own runs its commands too, so `build` and one step at a time give the same result. They take the builder placeholders plus `{name}` and `{plugin}`. A missing program stops the step before any work (exit 2); a command that exits non-zero stops it (exit 1) with a RESULT line naming the command. `validate` prints one `runs:` line per command.
 - A top-level `archives` list in sfmod.json: more archives that `pack` makes in dist, each named `<plugin> - <suffix>.ba2`. An entry either packs a `source` folder laid out like Data (with `"compression": "none"` for voice files, which play silent when stored compressed, and `"format": "dds"` for textures) or copies a ready archive from `file` as it is. These archives ship in the zip, `pack` deletes their old copies, and they never count as stray. The suffix may be `Main` or `Textures` only when `pack` doesn't make that archive itself. `pack` checks a source folder's files (a `steps.afterPlugin` command may fill it) and stops with exit 2 before Archive2 runs when it is missing, empty or holds a file that doesn't belong. `validate` prints an `archive:` line for each entry. In this version the list can't be used with `"xbox": true`.
+- `parts` in sfmod.json: the other plugins your builder writes into dist, each `{ "plugin": "MyMod-Extra.esm" }` with optional `scripts` of its own (the same shape as the top-level `scripts`; `source` defaults to the top-level source folders). `compile` compiles a part's scripts into `<stage>/parts/<part>/Scripts`, `pack` packs them into `<part> - Main.ba2`, `plugin` stops (exit 1) when a part plugin isn't in dist, and `zip` ships every plugin and archive and stops (exit 2) when one is missing. `validate` prints a `part:` line for each and refuses a part named like the main plugin or another part, a name that breaks the plugin-name rules, a script in two places, and `parts` with `builder.prebuilt`. In this version a part with scripts can't be used with `"xbox": true`.
+- The release now has a `<file>.sha256` beside each download, as well as `SHA256SUMS`, so a tool can check one download on its own.
 
 ### Example
 
@@ -56,6 +58,31 @@ and a made-up mod with a voice folder and a ready archive, `"archives": [ { "suf
     packed   C:\Mods\VoiceMod\dist\VoiceMod - Voices.ba2 (127 bytes)
     copied   C:\Mods\VoiceMod\dist\VoiceMod - Extra.ba2 from C:\Mods\VoiceMod\Original\Other - Extra.ba2 (23 bytes)
     RESULT: OK, "VoiceMod - Voices.ba2" and "VoiceMod - Extra.ba2" made in C:\Mods\VoiceMod\dist
+
+and a made-up mod whose Python builder writes three plugins, with `"parts": [ { "plugin": "PartsMod-Extra.esm", "scripts": { "namespaces": ["PTMX"] } }, { "plugin": "PartsMod-Patch.esm" } ]`:
+
+    > sf-mod-build build
+    == compile
+    compiled PTM\PTM_Main.psc into C:\Mods\PartsMod\.build\stage\Scripts
+    compiled PTMX\PTMX_Extra.psc into C:\Mods\PartsMod\.build\stage\parts\PartsMod-Extra\Scripts
+    ...
+    == plugin
+    running the builder: python.exe (builder.command)
+    built    C:\Mods\PartsMod\dist\PartsMod.esm (16 bytes)
+    built    C:\Mods\PartsMod\dist\PartsMod-Extra.esm (16 bytes)
+    built    C:\Mods\PartsMod\dist\PartsMod-Patch.esm (16 bytes)
+    RESULT: OK, PartsMod.esm and 2 part plugin(s) built into C:\Mods\PartsMod\dist
+    == pack
+    packed   C:\Mods\PartsMod\dist\PartsMod - Main.ba2 (331 bytes)
+    packed   C:\Mods\PartsMod\dist\PartsMod-Extra - Main.ba2 (336 bytes)
+    RESULT: OK, "PartsMod - Main.ba2" and "PartsMod-Extra - Main.ba2" made in C:\Mods\PartsMod\dist
+    == zip
+    zipped   PartsMod - Main.ba2
+    zipped   PartsMod-Extra - Main.ba2
+    zipped   PartsMod-Extra.esm
+    zipped   PartsMod-Patch.esm
+    zipped   PartsMod.esm
+    ...
 
 ### Fixed
 

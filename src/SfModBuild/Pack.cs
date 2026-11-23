@@ -4,6 +4,7 @@
 //                              (meshes, materials, terrain, sounds ...); packed with -compression=None when it holds a
 //                              .wem or .ffxanim, which play silent when stored compressed
 //   "<plugin> - Textures.ba2"  the loose .dds files from assets.source, packed with -format=DDS
+//   "<part> - Main.ba2"        each part's compiled scripts (<stage>/parts/<part>/Scripts), for a part with scripts
 //   "<plugin> - <suffix>.ba2"  each entry of the top-level archives list: its source folder packed as it is (with
 //                              -compression=None and -format=DDS when asked), or its ready file copied (not with xbox)
 // With "xbox": true it also makes the Creations upload set: creations-out is emptied, dist's files are copied into it,
@@ -23,9 +24,9 @@ internal static class Pack
     public const string Usage =
         "usage: sf-mod-build pack [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
         "  packs the compiled scripts and the loose files (assets) into \"<plugin> - Main.ba2\" and \"<plugin> - Textures.ba2\"\n" +
-        "  in dist with the Creation Kit's Archive2, and makes each archive in the archives list (packed from its source\n" +
-        "  folder, or copied from its file); with \"xbox\": true also makes creations-out (dist's files plus the\n" +
-        "  \"_xbox\" archives); then runs steps.afterPack";
+        "  in dist with the Creation Kit's Archive2, packs each part's scripts into \"<part> - Main.ba2\", and makes each\n" +
+        "  archive in the archives list (packed from its source folder, or copied from its file); with \"xbox\": true\n" +
+        "  also makes creations-out (dist's files plus the \"_xbox\" archives); then runs steps.afterPack";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
 
@@ -39,7 +40,7 @@ internal static class Pack
     {
         var project = Common.LoadProject(p, stdout, "CANNOT PACK");
         if (project == null) return ExitCodes.BadInput;
-        if (!project.HasMainArchive && !project.HasTexturesArchive && project.Archives.Count == 0)
+        if (!project.HasMainArchive && !project.HasTexturesArchive && project.Archives.Count == 0 && !project.Parts.Any(x => x.Scripts != null))
         {
             // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip;
             // the game folders are looked up once, and only when there is something to delete
@@ -56,6 +57,15 @@ internal static class Pack
             if (!Directory.Exists(scripts) || !Directory.EnumerateFiles(scripts, "*.pex", SearchOption.AllDirectories).Any())
             {
                 stdout.WriteLine($"RESULT: CANNOT PACK (there are no compiled scripts in {scripts}. Fix: run sf-mod-build compile first).");
+                return ExitCodes.BadInput;
+            }
+        }
+        foreach (var part in project.Parts.Where(x => x.Scripts != null))
+        {
+            var scripts = Path.Combine(part.StageIn(project.Stage), "Scripts");
+            if (!Directory.Exists(scripts) || !Directory.EnumerateFiles(scripts, "*.pex", SearchOption.AllDirectories).Any())
+            {
+                stdout.WriteLine($"RESULT: CANNOT PACK (there are no compiled scripts for the part {part.Plugin} in {scripts}. Fix: run sf-mod-build compile first).");
                 return ExitCodes.BadInput;
             }
         }
@@ -103,7 +113,7 @@ internal static class Pack
         var keep = new List<string> { project.Folder, project.Stage, project.Dist };
         keep.AddRange(project.BuilderFolders);
         keep.AddRange(more);
-        if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
+        keep.AddRange(project.AllScriptSources);
         if (project.Assets != null)
         {
             keep.Add(project.Assets.Source);
@@ -207,6 +217,12 @@ internal static class Pack
         var pcJobs = new List<Job>();
         if (project.HasMainArchive) pcJobs.Add(new Job(Path.Combine(project.Dist, project.Ba2Name), mainSource!, mainRoot!, null, mainCompression));
         if (project.HasTexturesArchive) pcJobs.Add(new Job(Path.Combine(project.Dist, project.TexturesBa2Name), texSource!, texSource!, "DDS", null));
+        // each part's compiled scripts (refused with xbox, so PC only)
+        foreach (var part in project.Parts.Where(x => x.Scripts != null))
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(part.StageIn(project.Stage)));
+            pcJobs.Add(new Job(Path.Combine(project.Dist, part.Ba2Name), Path.Combine(root, "Scripts"), root, null, null));
+        }
         foreach (var job in pcJobs)
             if (Archive(project, archive2, job, env, stdout) is { } code) return code;
         // the archives list (refused with xbox, so these are PC only)
@@ -439,7 +455,8 @@ internal static class Pack
         {
             try
             {
-                foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name }.Concat(project.Archives.Select(a => a.Name)).Distinct())
+                foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name }.Concat(project.Parts.Select(x => x.Ba2Name))
+                             .Concat(project.Archives.Select(a => a.Name)).Distinct())
                     foreach (var path in Common.FilesNamed(project.Dist, name))
                         // the archive this build makes is deleted at its exact name by Archive just before Archive2
                         // writes it (so a link there is removed, never written through)

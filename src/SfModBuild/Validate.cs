@@ -35,6 +35,13 @@ internal static class Validate
         return ExitCodes.Ok;
     }
 
+    static void ScriptLines(SfModProject.ScriptsSection s, string first, TextWriter o)
+    {
+        o.WriteLine($"{first}from {string.Join("; ", s.Sources)}");
+        if (s.Namespaces.Count > 0) o.WriteLine($"          namespaces {string.Join(", ", s.Namespaces)}");
+        if (s.Files.Count > 0) o.WriteLine($"          files {string.Join(", ", s.Files)}");
+    }
+
     static void Print(SfModProject p, TextWriter o)
     {
         o.WriteLine($"project:  {p.File}");
@@ -58,11 +65,16 @@ internal static class Validate
             o.WriteLine(a.File != null ? $"archive:  \"{a.Name}\" copied from {a.File}"
                 : $"archive:  \"{a.Name}\" packed from {a.Source}" + (a.Uncompressed ? ", uncompressed" : "") + (a.Dds ? ", format DDS" : ""));
         if (p.Scripts == null) o.WriteLine("scripts:  none");
-        else
+        else ScriptLines(p.Scripts, "scripts:  ", o);
+        foreach (var part in p.Parts)
         {
-            o.WriteLine($"scripts:  from {string.Join("; ", p.Scripts.Sources)}");
-            if (p.Scripts.Namespaces.Count > 0) o.WriteLine($"          namespaces {string.Join(", ", p.Scripts.Namespaces)}");
-            if (p.Scripts.Files.Count > 0) o.WriteLine($"          files {string.Join(", ", p.Scripts.Files)}");
+            if (part.Scripts == null)
+            {
+                o.WriteLine($"part:     {part.Plugin} (no scripts, so no archive)");
+                continue;
+            }
+            o.WriteLine($"part:     {part.Plugin} (archive \"{part.Ba2Name}\")");
+            ScriptLines(part.Scripts, "          scripts ", o);
         }
         if (p.BuilderPrebuilt != null)
             o.WriteLine($"builder:  prebuilt {p.BuilderPrebuilt}, copied into dist as {p.Plugin}");
@@ -80,7 +92,7 @@ internal static class Validate
             .Concat(p.HasTexturesArchive ? new[] { p.XboxTexturesBa2Name } : Array.Empty<string>()).ToList();
         o.WriteLine($"xbox:     {(!p.Xbox ? "no" : xboxArchives.Count == 0 ? $"yes, but there is nothing to pack for it; {p.CreationsOut} isn't made" : $"yes, {string.Join(" and ", xboxArchives.Select(a => $"\"{a}\""))} in {p.CreationsOut}")}");
         o.WriteLine($"zip:      {p.ZipPath}");
-        o.WriteLine($"          holds {p.Plugin}" + string.Concat(archives.Concat(p.ZipArchives).Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
+        o.WriteLine($"          holds {p.Plugin}" + string.Concat(p.Parts.Select(x => $", {x.Plugin}")) + string.Concat(archives.Concat(p.ZipArchives).Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
         o.WriteLine($"check:    {p.Checker ?? "sf-mod-check or sfmodcheck from PATH"}{(p.CheckRequired ? ", required" : ", a missing checker is a WARNING")}"
             + (p.CheckArgs.Count > 0 ? $", extra options {string.Join(" ", p.CheckArgs)}" : ""));
     }

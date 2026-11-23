@@ -1,5 +1,5 @@
 // sf-mod-build compile [sfmod.json]: compiles the mod's Papyrus scripts with the Creation Kit's own compiler, one call
-// per script, into <stage>/Scripts. The game's script sources (needed as imports) are unpacked once from
+// per script, into <stage>/Scripts (and each part's scripts into <stage>/parts/<part>/Scripts). The game's script sources (needed as imports) are unpacked once from
 // Tools/ContentResources.zip into a cache folder per zip version. Never with -release: it strips every Debug.Trace.
 // Exit 0 when every script compiled, 1 when one failed (the compiler's last lines are shown), 2 bad input or setup.
 using System.IO.Compression;
@@ -19,7 +19,8 @@ internal static class Compile
 {
     public const string Usage =
         "usage: sf-mod-build compile [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
-        "  compiles the mod's Papyrus scripts with the Creation Kit's compiler into <stage>/Scripts (stage is emptied first)\n" +
+        "  compiles the mod's Papyrus scripts with the Creation Kit's compiler into <stage>/Scripts (stage is emptied first),\n" +
+        "  and each part's scripts into <stage>/parts/<part plugin without extension>/Scripts\n" +
         "  never with -release: it removes every Debug.Trace, so the mod's log and debug switch would stop working";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
@@ -66,7 +67,7 @@ internal static class Compile
         var project = Common.LoadProject(p, stdout, "CANNOT COMPILE");
         if (project == null) return ExitCodes.BadInput;
         var scripts = ScriptList(project);
-        if (scripts.Count == 0)
+        if (scripts.Count == 0 && !project.Parts.Any(x => x.Scripts != null))
         {
             stdout.WriteLine("RESULT: OK, nothing to compile (the project has no scripts)");
             return ExitCodes.Ok;
@@ -100,10 +101,13 @@ internal static class Compile
 
     /// <summary>Every script the project names: each .psc in &lt;source&gt;/&lt;namespace&gt;/ (the first source folder
     /// that has that namespace), then scripts.files, each once, sorted by name.</summary>
-    public static List<ScriptToCompile> ScriptList(SfModProject project)
+    public static List<ScriptToCompile> ScriptList(SfModProject project) => ScriptList(project.Scripts);
+
+    /// <summary>The same for one scripts section (the top-level one or a part's); empty for null.</summary>
+    public static List<ScriptToCompile> ScriptList(SfModProject.ScriptsSection? s)
     {
         var list = new List<ScriptToCompile>();
-        if (project.Scripts is not { } s) return list;
+        if (s == null) return list;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         void Add(string source, string name)
         {
@@ -153,7 +157,7 @@ internal static class Compile
     {
         var keep = new List<string> { project.Folder, project.Dist, project.CreationsOut };
         keep.AddRange(project.BuilderFolders);
-        if (project.Scripts != null) keep.AddRange(project.Scripts.Sources);
+        keep.AddRange(project.AllScriptSources);
         return Common.UnsafeToEmpty("stage", project.Stage, project.Folder, keep, gameFolders);
     }
 
@@ -172,20 +176,29 @@ internal static class Compile
             stdout.WriteLine($"RESULT: CANNOT COMPILE ({emptyError}).");
             return ExitCodes.BadInput;
         }
-        try
-        {
-            Directory.CreateDirectory(Path.Combine(project.Stage, "Scripts"));
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            stdout.WriteLine($"RESULT: CANNOT COMPILE (the folder {Path.Combine(project.Stage, "Scripts")} can't be made: {e.Message}). Fix: check that this account can write to {project.Stage}.");
-            return ExitCodes.BadInput;
-        }
+        // the top-level scripts into <stage>/Scripts, then each part's into <stage>/parts/<plugin base>/Scripts; a
+        // part's own source folders come first in its imports, then the top-level ones, so its scripts can use the mod's
+        var jobs = new List<(string Output, List<string> Imports, IReadOnlyList<ScriptToCompile> Scripts)>();
+        if (project.Scripts != null)
+            jobs.Add((Path.Combine(project.Stage, "Scripts"), project.Scripts.Sources.Select(Path.GetFullPath).Append(vanillaSource).ToList(), scripts));
+        foreach (var part in project.Parts)
+            if (part.Scripts != null)
+                jobs.Add((Path.Combine(part.StageIn(project.Stage), "Scripts"),
+                    part.Scripts.Sources.Concat(project.Scripts?.Sources ?? Array.Empty<string>()).Select(Path.GetFullPath)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).Append(vanillaSource).ToList(),
+                    ScriptList(part.Scripts)));
+        foreach (var (folder, _, _) in jobs)
+            try { Directory.CreateDirectory(folder); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                stdout.WriteLine($"RESULT: CANNOT COMPILE (the folder {folder} can't be made: {e.Message}). Fix: check that this account can write to {project.Stage}.");
+                return ExitCodes.BadInput;
+            }
 
-        var output = Path.Combine(project.Stage, "Scripts");
-        var imports = project.Scripts!.Sources.Select(Path.GetFullPath).Append(vanillaSource).ToList();
+        var total = jobs.Sum(j => j.Scripts.Count);
         var n = 0;
-        foreach (var script in scripts)
+        foreach (var (output, imports, list) in jobs)
+        foreach (var script in list)
         {
             var args = CommandLine(script, imports, output);
             Log.Write($"compile {script.Name}: in {script.SourceFolder}: \"{compiler}\" {args}");
@@ -200,13 +213,15 @@ internal static class Compile
             {
                 stdout.WriteLine($"FAILED   {script.Name}.psc: {failed}");
                 Common.ShowLastLines(stdout, r.Output);
-                stdout.WriteLine($"RESULT: FAILED, {script.RelativePsc} in {script.SourceFolder} didn't compile ({n} of {scripts.Count} compiled before it). Fix the error the compiler names above and run again.");
+                stdout.WriteLine($"RESULT: FAILED, {script.RelativePsc} in {script.SourceFolder} didn't compile ({n} of {total} compiled before it). Fix the error the compiler names above and run again.");
                 return ExitCodes.Failed;
             }
             n++;
-            stdout.WriteLine($"compiled {script.Name}.psc");
+            stdout.WriteLine($"compiled {script.Name}.psc{(jobs.Count > 1 || project.Scripts == null ? $" into {output}" : "")}");
         }
-        stdout.WriteLine($"RESULT: OK, {n} script(s) compiled into {output}");
+        stdout.WriteLine(jobs.Count == 1
+            ? $"RESULT: OK, {n} script(s) compiled into {jobs[0].Output}"
+            : $"RESULT: OK, {n} script(s) compiled into {string.Join(" and ", jobs.Select(j => j.Output))}");
         return ExitCodes.Ok;
     }
 }
