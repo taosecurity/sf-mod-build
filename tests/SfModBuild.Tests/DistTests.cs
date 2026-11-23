@@ -30,7 +30,8 @@ public partial class PluginPackTests
             Assert.Equal(ExitCodes.BadInput, code);
             Assert.Contains("\"notes.txt\"", output);
             Assert.Contains("\"superseded-2026-11-04\" (a folder)", output);
-            Assert.Contains("never deletes what it didn't make", output);
+            Assert.Contains("sf-mod-build deletes only the plugins and archives in dist and what earlier builds made there", output);
+            Assert.DoesNotContain("never deletes what it didn't make", output);
             Assert.Contains("Fix: move them out of dist", output);
             Assert.Empty(env.Execs);
             Assert.Equal("the user's old copy", File.ReadAllText(Mod(t, "dist", "superseded-2026-11-04", "MyMod.esm")));

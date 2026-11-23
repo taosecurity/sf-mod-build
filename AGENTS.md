@@ -199,7 +199,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Never writes into the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist folder
   that is a link or junction (with nothing to pack, a creations-out folder too; in plugin, any dist that is a
   link or junction), and never empties a folder that is or holds the mod folder, a source folder, the builder or
-  a drive root. It never deletes a file or folder in dist that no earlier build made.
+  a drive root. In dist it deletes only plugins, `.ba2` files and what earlier builds made there.
 - Never uploads anything, never changes the game's files, never edits the person's load order or mod manager.
 - Never packs an assets folder that is in the game's folder or holds it, the mod's own folder, dist, stage,
   creations-out, the builder or a script source folder; validate refuses those.

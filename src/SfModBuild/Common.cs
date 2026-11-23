@@ -259,7 +259,7 @@ internal static class Common
                 else foreign.Add(file ? $"\"{n}\"" : $"\"{n}\" (a folder)");
             }
             if (foreign.Count > 0)
-                return $"the dist folder {folder} holds {string.Join(", ", foreign)}, which no earlier build listed as its own, and sf-mod-build never deletes what it didn't make, so nothing was deleted. "
+                return $"the dist folder {folder} holds {string.Join(", ", foreign)}, which no earlier build listed as its own, and sf-mod-build deletes only the plugins and archives in dist and what earlier builds made there, so nothing was deleted. "
                        + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of dist and run again (a build by sf-mod-build 0.3.0 or earlier left no list of what it made, so its builder's other files are named here once), or set \"dist\" in {project.File} to a folder of its own";
             // the made list goes last, so a delete that fails (a plugin open in the CK or xEdit) leaves it for the next run
             foreach (var e in delete.OrderBy(e => Same(e.Name, MadeList)))

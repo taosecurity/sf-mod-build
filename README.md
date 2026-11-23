@@ -232,14 +232,15 @@ updates that zip. On Linux the folder is `$XDG_DATA_HOME/sf-mod-build` (or `~/.l
 
 ### What dist may hold
 
-sf-mod-build never deletes a file or folder in dist that it didn't make. Before the builder runs, `plugin` deletes
-what earlier builds made there: the names in dist's `.sf-mod-build-made` list (what the builder, sf-mod-build and
-your steps wrote last time), plugins (`.esm`, `.esp`, `.esl`) and archives (`.ba2`). Zips stay. When dist holds
+Before the builder runs, `plugin` deletes what earlier builds made in dist: the names in dist's
+`.sf-mod-build-made` list (what the builder, sf-mod-build and your steps wrote last time), and every plugin (`.esm`,
+`.esp`, `.esl`) and archive (`.ba2`) at the top of dist, so don't keep plugins or archives of your own there (a
+master for `check --masters-dir`, say). Zips stay. When dist holds
 anything else, such as a folder of old copies you keep there, `plugin` deletes nothing and stops with exit 2,
 naming each one:
 
     > sf-mod-build plugin
-    RESULT: CANNOT BUILD THE PLUGIN (the dist folder C:\Mods\MyMod\dist holds "notes.txt", "old" (a folder), which no earlier build listed as its own, and sf-mod-build never deletes what it didn't make, so nothing was deleted. Fix: move them out of dist and run again (...), or set "dist" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+    RESULT: CANNOT BUILD THE PLUGIN (the dist folder C:\Mods\MyMod\dist holds "notes.txt", "old" (a folder), which no earlier build listed as its own, and sf-mod-build deletes only the plugins and archives in dist and what earlier builds made there, so nothing was deleted. Fix: move them out of dist and run again (...), or set "dist" in C:\Mods\MyMod\sfmod.json to a folder of its own).
 
 Move them out of dist. The first build after you update from 0.3.0 or earlier may name your builder's own extra
 files this way once, because those versions left no list; delete them and run again. The list never goes in the
