@@ -214,6 +214,48 @@ public class PartsTests
     }
 
     [Fact]
+    public void OptimizeFalseLeavesOutTheOptionAndAPartFollowsItUnlessItSetsItsOwn()
+    {
+        var json = Json(Extra + ", { \"plugin\": \"MyMod-Own.esm\", \"scripts\": { \"source\": \"Own\", \"files\": [\"OWN/Delta\"], \"optimize\": true } }")
+            .Replace("\"namespaces\": [\"MYM\"] }", "\"namespaces\": [\"MYM\"], \"optimize\": false }");
+        var (t, sfmod, _, env) = Setup(json);
+        using (t)
+        {
+            t.File(Path.Combine("mod", "Own", "OWN", "Delta.psc"), "ScriptName OWN:Delta extends Quest\n");
+            Assert.Empty(Load(sfmod, out var p));
+            Assert.False(p!.Scripts!.Optimize);
+            RunApp(env, out var shown, "validate", sfmod);
+            Assert.Contains("compiled without -optimize", shown);
+            env.Execs.Clear();
+            env.ExecResult = (exe, args, workDir) =>
+            {
+                var m = Regex.Match(args, "^\"(?<psc>[^\"]+)\\.psc\" .* -o=\"(?<out>[^\"]+)\"( -optimize)?$");
+                if (!m.Success) return new ProcessResult(3, "fake compiler: unexpected command line " + args);
+                var pex = Path.Combine(m.Groups["out"].Value, m.Groups["psc"].Value + ".pex");
+                Directory.CreateDirectory(Path.GetDirectoryName(pex)!);
+                File.WriteAllText(pex, "made-up pex");
+                return new ProcessResult(0, "Compilation succeeded.\n");
+            };
+            var sw = new StringWriter();
+            var code = Compile.CompileAll(p, Compile.ScriptList(p), "compiler", "vanilla", env, sw);
+            Assert.True(code == ExitCodes.Ok, sw.ToString());
+            Assert.Equal(3, env.Execs.Count);
+            Assert.DoesNotContain("-optimize", env.Execs[0].Arguments); // top-level, optimize false
+            Assert.DoesNotContain("-optimize", env.Execs[1].Arguments); // MyMod-Extra follows the top-level value
+            Assert.EndsWith(" -optimize", env.Execs[2].Arguments);      // MyMod-Own sets its own
+        }
+    }
+
+    [Fact]
+    public void OptimizeMustBeTrueOrFalse()
+    {
+        var json = Json(Patch).Replace("\"namespaces\": [\"MYM\"] }", "\"namespaces\": [\"MYM\"], \"optimize\": \"no\" }");
+        var (t, sfmod, _, _) = Setup(json);
+        using (t)
+            Assert.Contains(Load(sfmod, out _), x => x.Field == "scripts.optimize" && x.Problem.Contains("not true or false"));
+    }
+
+    [Fact]
     public void OnlyAPartNeedsToHaveScripts()
     {
         var json = Json(Extra).Replace("\"scripts\": { \"source\": \"Scripts/Source\", \"namespaces\": [\"MYM\"] },", "");

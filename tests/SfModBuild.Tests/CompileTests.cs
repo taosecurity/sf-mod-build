@@ -105,6 +105,15 @@ public class CompileTests
         Assert.Equal($"\"{psc}\" -i=\"C:\\mod\\Scripts\\Source;C:\\cache\\vanilla\\abc\\Scripts\\Source{(OperatingSystem.IsWindows() ? "" : "\\")}\" -f=\"Starfield_Papyrus_Flags.flg\" -o=\"C:\\mod\\.build\\stage\\Scripts\" -optimize", line);
     }
 
+    [Fact]
+    public void CommandLineWithoutOptimize()
+    {
+        var s = new ScriptToCompile(@"C:\mod\Scripts\Source", @"MYM\Alpha");
+        var line = Compile.CommandLine(s, new[] { @"C:\mod\Scripts\Source" }, @"C:\mod\.build\stage\Scripts", optimize: false);
+        Assert.EndsWith("-o=\"C:\\mod\\.build\\stage\\Scripts\"", line);
+        Assert.DoesNotContain("-optimize", line);
+    }
+
     [Theory]
     [InlineData("-release")]
     [InlineData("-r")]

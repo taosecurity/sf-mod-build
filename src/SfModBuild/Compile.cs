@@ -133,8 +133,9 @@ internal static class Compile
 
     /// <summary>The compiler's command line for one script:
     /// "NS\Name.psc" -i="own1;own2;vanilla" -f="Starfield_Papyrus_Flags.flg" -o="stage\Scripts" -optimize.
-    /// Extra options are added at the end; -release is refused (throws) whatever the source.</summary>
-    public static string CommandLine(ScriptToCompile script, IEnumerable<string> imports, string output, IEnumerable<string>? extra = null)
+    /// -optimize is left out when optimize is false (scripts.optimize). Extra options are added at the end; -release is
+    /// refused (throws) whatever the source.</summary>
+    public static string CommandLine(ScriptToCompile script, IEnumerable<string> imports, string output, IEnumerable<string>? extra = null, bool optimize = true)
     {
         var extras = (extra ?? Array.Empty<string>()).ToList();
         foreach (var e in extras)
@@ -146,7 +147,7 @@ internal static class Compile
             if (t.Contains('"')) throw new ArgumentException($"the path {t} contains a quote mark, which the compiler's command line can't carry.");
             return t;
         }
-        var line = $"\"{Clean(script.RelativePsc)}\" -i=\"{string.Join(";", imports.Select(Clean))}\" -f=\"{FlagsFile}\" -o=\"{Clean(output)}\" -optimize";
+        var line = $"\"{Clean(script.RelativePsc)}\" -i=\"{string.Join(";", imports.Select(Clean))}\" -f=\"{FlagsFile}\" -o=\"{Clean(output)}\"" + (optimize ? " -optimize" : "");
         if (extras.Count > 0) line += " " + string.Join(" ", extras);
         return line;
     }
@@ -178,16 +179,16 @@ internal static class Compile
         }
         // the top-level scripts into <stage>/Scripts, then each part's into <stage>/parts/<plugin base>/Scripts; a
         // part's own source folders come first in its imports, then the top-level ones, so its scripts can use the mod's
-        var jobs = new List<(string Output, List<string> Imports, IReadOnlyList<ScriptToCompile> Scripts)>();
+        var jobs = new List<(string Output, List<string> Imports, IReadOnlyList<ScriptToCompile> Scripts, bool Optimize)>();
         if (project.Scripts != null)
-            jobs.Add((Path.Combine(project.Stage, "Scripts"), project.Scripts.Sources.Select(Path.GetFullPath).Append(vanillaSource).ToList(), scripts));
+            jobs.Add((Path.Combine(project.Stage, "Scripts"), project.Scripts.Sources.Select(Path.GetFullPath).Append(vanillaSource).ToList(), scripts, project.Scripts.Optimize));
         foreach (var part in project.Parts)
             if (part.Scripts != null)
                 jobs.Add((Path.Combine(part.StageIn(project.Stage), "Scripts"),
                     part.Scripts.Sources.Concat(project.Scripts?.Sources ?? Array.Empty<string>()).Select(Path.GetFullPath)
                         .Distinct(StringComparer.OrdinalIgnoreCase).Append(vanillaSource).ToList(),
-                    ScriptList(part.Scripts)));
-        foreach (var (folder, _, _) in jobs)
+                    ScriptList(part.Scripts), part.Scripts.Optimize));
+        foreach (var (folder, _, _, _) in jobs)
             try { Directory.CreateDirectory(folder); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -197,10 +198,10 @@ internal static class Compile
 
         var total = jobs.Sum(j => j.Scripts.Count);
         var n = 0;
-        foreach (var (output, imports, list) in jobs)
+        foreach (var (output, imports, list, optimize) in jobs)
         foreach (var script in list)
         {
-            var args = CommandLine(script, imports, output);
+            var args = CommandLine(script, imports, output, optimize: optimize);
             Log.Write($"compile {script.Name}: in {script.SourceFolder}: \"{compiler}\" {args}");
             var r = env.Exec(compiler, args, script.SourceFolder, PerScriptTimeout);
             Log.Write($"compiler exit code {r.ExitCode}{(r.Why != null ? $" ({r.Why})" : "")}; output:\n{r.Output.TrimEnd()}");

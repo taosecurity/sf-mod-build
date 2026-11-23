@@ -259,7 +259,8 @@ allowed.
   "scripts": {                                 // leave out when the mod has no scripts
     "source": "Scripts/Source",                // one folder, or a list of folders (default Scripts/Source)
     "namespaces": ["MYM"],                     // every .psc in <source>/<namespace>/ ...
-    "files": ["MYM/MyQuestScript"]             // ... or an explicit list (namespace/name, .psc optional)
+    "files": ["MYM/MyQuestScript"],            // ... or an explicit list (namespace/name, .psc optional)
+    "optimize": true                           // false compiles without -optimize (default true; parts follow it)
   },
   "builder": {                                 // exactly one of project, command and prebuilt (required)
     "project": "Builder",                      // a folder holding one .csproj, or the .csproj itself, run with dotnet run

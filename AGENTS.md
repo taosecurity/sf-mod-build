@@ -114,7 +114,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 ## 6. Inputs
 
 - `sfmod.json` (fields in the README, "The project file"). Paths in it are relative to its folder.
-- Papyrus sources under `scripts.source` (default `Scripts\Source\<Namespace>\*.psc`).
+- Papyrus sources under `scripts.source` (default `Scripts\Source\<Namespace>\*.psc`). They compile with
+  `-optimize` unless `scripts.optimize` is `false` (a part's scripts follow that value unless they set their own).
 - The builder, exactly one of:
   - `builder.project`, a .NET project run as `dotnet run -c Release --project <builder> -- <builder.args>`;
   - `builder.command`, a list (program first) run as `<program> <its arguments> <builder.args>` in the sfmod.json

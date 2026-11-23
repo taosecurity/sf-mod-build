@@ -40,6 +40,7 @@ internal static class Validate
         o.WriteLine($"{first}from {string.Join("; ", s.Sources)}");
         if (s.Namespaces.Count > 0) o.WriteLine($"          namespaces {string.Join(", ", s.Namespaces)}");
         if (s.Files.Count > 0) o.WriteLine($"          files {string.Join(", ", s.Files)}");
+        if (!s.Optimize) o.WriteLine("          compiled without -optimize (scripts.optimize is false)");
     }
 
     static void Print(SfModProject p, TextWriter o)

@@ -9,7 +9,8 @@
 //     "scripts": {                                 leave out when the mod has no scripts
 //       "source": "Scripts/Source",                one folder, or a list of folders (default Scripts/Source)
 //       "namespaces": ["MYM"],                     every .psc in <source>/<namespace>/ ...
-//       "files": ["MYM/MyQuestScript"]             ... or an explicit list (namespace/name, .psc optional)
+//       "files": ["MYM/MyQuestScript"],            ... or an explicit list (namespace/name, .psc optional)
+//       "optimize": true                           false compiles without -optimize (default true)
 //     },
 //     "builder": {                                 exactly one of project, command and prebuilt (required)
 //       "project": "Builder",                      a folder holding one .csproj, or the .csproj itself, run with dotnet run
@@ -175,6 +176,8 @@ internal sealed class SfModProject
         public required IReadOnlyList<string> Namespaces { get; init; }
         /// <summary>Explicit scripts as "Namespace\Name" (no .psc); empty when the namespaces' folders are used.</summary>
         public required IReadOnlyList<string> Files { get; init; }
+        /// <summary>Whether the compiler gets -optimize (scripts.optimize, default true).</summary>
+        public bool Optimize { get; init; } = true;
     }
 
     /// <summary>One loose file: its full path here and its path inside the archive (relative to the assets folder,
@@ -219,7 +222,7 @@ internal sealed class SfModProject
     static readonly string[] SourceArtExtensions = { ".tif", ".tiff", ".fbx", ".wav", ".psd", ".blend", ".png", ".tga", ".jpg", ".jpeg", ".xcf", ".spp" };
     // Left out without a word: system clutter and dot files such as .gitkeep.
     public static readonly string[] SkippedAssetNames ={ "Thumbs.db", "desktop.ini" };
-    static readonly string[] ScriptsFields = { "source", "namespaces", "files" };
+    static readonly string[] ScriptsFields = { "source", "namespaces", "files", "optimize" };
     static readonly string[] BuilderFields = { "project", "command", "prebuilt", "args" };
     static readonly string[] ZipFields = { "name", "folder", "files", "archives" };
     static readonly string[] CheckFields = { "checker", "required", "args" };
@@ -450,7 +453,7 @@ internal sealed class SfModProject
                     name = null;
                 }
                 if (name != null) stems[Path.GetFileNameWithoutExtension(name)] = $"{at}.plugin";
-                var own = Scripts(e, at + ".scripts", scripts?.Sources);
+                var own = Scripts(e, at + ".scripts", scripts?.Sources, scripts?.Optimize ?? true);
                 if (own != null)
                 {
                     if (xbox)
@@ -822,7 +825,7 @@ internal sealed class SfModProject
             return plugin;
         }
 
-        SfModProject.ScriptsSection? Scripts(JsonElement root, string sf = "scripts", IReadOnlyList<string>? defaultSources = null)
+        SfModProject.ScriptsSection? Scripts(JsonElement root, string sf = "scripts", IReadOnlyList<string>? defaultSources = null, bool defaultOptimize = true)
         {
             if (!root.TryGetProperty("scripts", out var s) || s.ValueKind == JsonValueKind.Null) return null;
             if (s.ValueKind != JsonValueKind.Object)
@@ -892,7 +895,9 @@ internal sealed class SfModProject
                     Warn($"{sf}.files[{i}]", $"\"{files[i]}\" is listed twice.", "list each script once.");
                 else fileNames.Add(f);
             }
-            return new SfModProject.ScriptsSection { Sources = sources, Namespaces = nsFound, Files = fileNames };
+            // a part's scripts follow the top-level value unless they set their own
+            var optimize = Bool(s, "optimize", defaultOptimize, sf + ".optimize");
+            return new SfModProject.ScriptsSection { Sources = sources, Namespaces = nsFound, Files = fileNames, Optimize = optimize };
         }
 
         void AddSource(string value, string field, List<string> sources)
