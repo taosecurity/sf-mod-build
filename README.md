@@ -217,8 +217,8 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build validate [<sfmod.json>]` | Checks the project file and prints what a build would use. Each problem names the field and the fix. |
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
-| `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. Then it runs your `steps.afterPack` commands. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does a listed archive that isn't in dist. `zip.files` takes no archives. |
+| `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. It also makes each archive in the `archives` list (see [More archives](#more-archives-voices-and-ready-archives)). Then it runs your `steps.afterPack` commands. |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives` that isn't in dist. `zip.files` takes no archives. |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
@@ -263,6 +263,10 @@ allowed.
     "source": "Assets",                        // a folder laid out like Data: Meshes\, Materials\, Textures\ ...
     "xboxTextures": "Assets-xbox"              // optional: Xbox-format .dds files for the _xbox texture archive
   },
+  "archives": [                                // more archives pack makes in dist, "<plugin> - <suffix>.ba2" (optional)
+    { "suffix": "Voices", "source": "Voices", "compression": "none" },  // a folder laid out like Data, packed ...
+    { "suffix": "Extra", "file": "Original/MyMod - Extra.ba2" }        // ... or a ready archive, copied as it is
+  ],
   "zip": {
     "name": "{name}-{version}.zip",            // the zip's name (default {name}-{version}.zip)
     "folder": ".",                             // where the zip is written (default: the sfmod.json folder)
@@ -400,9 +404,37 @@ creations-out.
 Any other `.ba2` in dist that the build doesn't make stops `zip` (and `pack` with `"xbox": true`)
 with a RESULT line naming it, so a build never passes while silently leaving out an archive. Without `"xbox": true`,
 `pack` names each such archive in a WARNING line and goes on, so you hear about it before `zip`. The fix is to delete it
-from dist: sf-mod-build ships only the archives it builds, plus the ones you list in `zip.archives`. `zip.files`
+from dist: sf-mod-build ships only the archives it builds (the `archives` list included), plus the ones you list in `zip.archives`. `zip.files`
 takes no archives; `validate` reports a `.ba2` there as a PROBLEM. The mod's own archives go into the zip under their usual names, even when dist
 has them spelled in other letter case.
+
+### More archives: voices and ready archives
+
+The top-level `archives` list makes more archives in dist, each named `<plugin> - <suffix>.ba2`. They ship in the
+zip like Main and Textures, `pack` deletes their old copies (in any letter case) before it makes them, and they never
+count as stray. Each entry has a `suffix` and exactly one of these:
+
+- `source`: a folder laid out like Data (`Sound\Voice\...`, `Meshes\...`), packed with Archive2 as it is.
+  `"compression": "none"` packs it uncompressed, which voice archives need (a `.wem` stored compressed plays
+  silent); the default is `"default"`. `"format": "dds"` makes a texture archive; the default is `"general"`.
+- `file`: a ready archive (another author's original, for example), copied into dist as it is. It may sit outside
+  the mod's folder; it is only read. `compression` and `format` don't apply to it.
+
+```jsonc
+"archives": [
+  { "suffix": "Voices", "source": "Voices", "compression": "none" },
+  { "suffix": "Textures", "file": "Original/MyMod - Textures.ba2" }
+]
+```
+
+The suffix may be `Main` or `Textures` only when `pack` doesn't make that archive itself (no scripts or general
+loose files for Main, no `.dds` files in `assets.source` for Textures); `validate` reports the clash as a PROBLEM.
+A `source` folder must be inside the mod's folder and apart from dist, stage and creations-out. It may be filled by
+a `steps.afterPlugin` command, so `validate` doesn't look inside it; `pack` stops with exit 2, before Archive2 runs,
+when it isn't there, is empty, holds a file at its top, a link, or a `.psc`, plugin, archive or zip. A `file` must
+be there when `validate` runs. An archive can't be in both `archives` and `zip.archives`. In this version
+`archives` can't be used with `"xbox": true` (`validate` reports it as a PROBLEM): `pack` can't make a correct Xbox
+voice archive from PC `.wem` files, and a ready archive has no Xbox copy.
 
 ### Limits
 
@@ -413,7 +445,8 @@ has them spelled in other letter case.
   loads only archives whose names start that way; sf-mod-build doesn't check the name beyond that list, or what
   is inside the archive. `zip.archives` can't be
   used with `"xbox": true` (`validate` reports it as a PROBLEM), because `pack` can't make the Xbox copies of
-  archives your builder writes.
+  archives your builder writes. When the archive's files are in a folder, or it is a ready archive, the
+  `archives` list does the same job without the builder.
 - With `"xbox": true` and nothing left to pack, `pack` deletes only the mod's old archives from creations-out; the
   plugin and other files there stay as the last build left them, so creations-out isn't refreshed on that path.
 - creations-out takes dist's files only (the plugin and the archives). Other `zip.files` entries, such as a README

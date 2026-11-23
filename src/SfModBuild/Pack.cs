@@ -4,6 +4,8 @@
 //                              (meshes, materials, terrain, sounds ...); packed with -compression=None when it holds a
 //                              .wem or .ffxanim, which play silent when stored compressed
 //   "<plugin> - Textures.ba2"  the loose .dds files from assets.source, packed with -format=DDS
+//   "<plugin> - <suffix>.ba2"  each entry of the top-level archives list: its source folder packed as it is (with
+//                              -compression=None and -format=DDS when asked), or its ready file copied (not with xbox)
 // With "xbox": true it also makes the Creations upload set: creations-out is emptied, dist's files are copied into it,
 // and "<plugin> - Main_xbox.ba2" and "<plugin> - Textures_xbox.ba2" are packed there with -compression=XBox. The Xbox
 // texture archive is always a separate archive (never the PC one renamed by hand); it takes assets.xboxTextures when
@@ -21,7 +23,8 @@ internal static class Pack
     public const string Usage =
         "usage: sf-mod-build pack [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
         "  packs the compiled scripts and the loose files (assets) into \"<plugin> - Main.ba2\" and \"<plugin> - Textures.ba2\"\n" +
-        "  in dist with the Creation Kit's Archive2; with \"xbox\": true also makes creations-out (dist's files plus the\n" +
+        "  in dist with the Creation Kit's Archive2, and makes each archive in the archives list (packed from its source\n" +
+        "  folder, or copied from its file); with \"xbox\": true also makes creations-out (dist's files plus the\n" +
         "  \"_xbox\" archives); then runs steps.afterPack";
 
     public static readonly ArgSpec Spec = new(new[] { "--game" }, Array.Empty<string>(), MaxPositionals: 1);
@@ -36,7 +39,7 @@ internal static class Pack
     {
         var project = Common.LoadProject(p, stdout, "CANNOT PACK");
         if (project == null) return ExitCodes.BadInput;
-        if (!project.HasMainArchive && !project.HasTexturesArchive)
+        if (!project.HasMainArchive && !project.HasTexturesArchive && project.Archives.Count == 0)
         {
             // archives from an earlier build that had scripts or loose files must not stay in dist and reach the zip;
             // the game folders are looked up once, and only when there is something to delete
@@ -106,6 +109,7 @@ internal static class Pack
             keep.Add(project.Assets.Source);
             if (project.Assets.XboxTextures != null) keep.Add(project.Assets.XboxTextures);
         }
+        keep.AddRange(project.Archives.Where(a => a.Source != null).Select(a => a.Source!));
         return keep;
     }
 
@@ -134,6 +138,12 @@ internal static class Pack
         if (project.Assets != null && AssetsInGame(project.Assets, gameFolder) is { } inGame)
         {
             stdout.WriteLine($"RESULT: CANNOT PACK ({inGame}). Fix: copy the mod's own loose files into a folder of the mod, for example \"Assets\", and point assets.source at it.");
+            return ExitCodes.BadInput;
+        }
+        // checked before any archive is made, so a missing or empty folder stops pack before Archive2 runs
+        if (ExtraProblem(project, gameFolder) is { } extraWhy)
+        {
+            stdout.WriteLine($"RESULT: CANNOT PACK ({extraWhy}).");
             return ExitCodes.BadInput;
         }
         try { Directory.CreateDirectory(project.Dist); }
@@ -199,12 +209,36 @@ internal static class Pack
         if (project.HasTexturesArchive) pcJobs.Add(new Job(Path.Combine(project.Dist, project.TexturesBa2Name), texSource!, texSource!, "DDS", null));
         foreach (var job in pcJobs)
             if (Archive(project, archive2, job, env, stdout) is { } code) return code;
+        // the archives list (refused with xbox, so these are PC only)
+        var madeNames = pcJobs.Select(j => j.Ba2).ToList();
+        foreach (var extra in project.Archives)
+        {
+            var ba2 = Path.Combine(project.Dist, extra.Name);
+            if (extra.Source != null)
+            {
+                var job = new Job(ba2, extra.Source, extra.Source, extra.Dds ? "DDS" : null, extra.Uncompressed ? "None" : null);
+                if (Archive(project, archive2, job, env, stdout) is { } code) return code;
+            }
+            else
+            {
+                if (DeleteOld(ba2, stdout) is { } code) return code;
+                try { File.Copy(extra.File!, ba2); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    stdout.WriteLine($"RESULT: FAILED, {extra.File} couldn't be copied to {ba2} ({e.Message}). Fix: check that the file is there and readable, close any program using the archive, and run again.");
+                    return ExitCodes.Failed;
+                }
+                Log.Write($"copied {extra.File} -> {ba2}");
+                stdout.WriteLine($"copied   {ba2} from {extra.File} ({new FileInfo(ba2).Length} bytes)");
+            }
+            madeNames.Add(ba2);
+        }
 
-        var made = pcJobs.Count == 1 ? pcJobs[0].Ba2
-            : $"{string.Join(" and ", pcJobs.Select(j => $"\"{Path.GetFileName(j.Ba2)}\""))} made in {project.Dist}";
+        var made = madeNames.Count == 1 ? madeNames[0]
+            : $"{string.Join(" and ", madeNames.Select(j => $"\"{Path.GetFileName(j)}\""))} made in {project.Dist}";
         if (!project.Xbox)
         {
-            stdout.WriteLine(pcJobs.Count == 1 ? $"RESULT: OK, {made} made" : $"RESULT: OK, {made}");
+            stdout.WriteLine(madeNames.Count == 1 ? $"RESULT: OK, {made} made" : $"RESULT: OK, {made}");
             return ExitCodes.Ok;
         }
         if (Common.Empty(project.CreationsOut) is { } emptyError)
@@ -238,7 +272,7 @@ internal static class Pack
             if (Archive(project, archive2, job, env, stdout) is { } code) return code;
         if (project.HasTexturesArchive && assets!.XboxTextures == null)
             stdout.WriteLine($"note     \"{project.XboxTexturesBa2Name}\" holds the PC-format textures (no assets.xboxTextures given); a console test is the only proof they look right on Xbox");
-        stdout.WriteLine(pcJobs.Count == 1 ? $"RESULT: OK, {made} and the Creations set in {project.CreationsOut} made" : $"RESULT: OK, {made}, and the Creations set made in {project.CreationsOut}");
+        stdout.WriteLine(madeNames.Count == 1 ? $"RESULT: OK, {made} and the Creations set in {project.CreationsOut} made" : $"RESULT: OK, {made}, and the Creations set made in {project.CreationsOut}");
         return ExitCodes.Ok;
     }
 
@@ -255,6 +289,55 @@ internal static class Pack
                 || f.StartsWith(game + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 || game.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 return $"{field} {f} is inside or holds the game's folder {game}, so the game's own files would be packed";
+        }
+        return null;
+    }
+
+    /// <summary>Why an entry of the archives list can't be made, or null. A source folder may have been filled by an
+    /// afterPlugin step, so it is checked here, with the assets rules: it must be there, hold files, be apart from the
+    /// game's folder, hold no links, no files at its top and no .psc, plugins, archives or zips. A ready archive
+    /// must still be there.</summary>
+    static string? ExtraProblem(SfModProject project, string gameFolder)
+    {
+        var game = Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameFolder));
+        foreach (var a in project.Archives)
+        {
+            var what = $"the archives entry for \"{a.Name}\"";
+            if (a.File != null)
+            {
+                if (!File.Exists(a.File)) return $"{what} copies {a.File}, which isn't there. Fix: put the ready archive back, or change archives in {project.File}";
+                continue;
+            }
+            var src = a.Source!;
+            if (!Directory.Exists(src))
+                return $"{what} packs the folder {src}, which isn't there. Fix: make the folder and put the archive's files in it (laid out like Data), or have a steps.afterPlugin command fill it";
+            if (string.Equals(src, game, StringComparison.OrdinalIgnoreCase)
+                || src.StartsWith(game + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || game.StartsWith(src + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return $"{what} packs {src}, which is inside or holds the game's folder {game}, so the game's own files would be packed. Fix: copy the files into a folder of the mod";
+            var count = 0;
+            try
+            {
+                foreach (var e in new DirectoryInfo(src).EnumerateFileSystemInfos("*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 }))
+                {
+                    if (e.LinkTarget != null)
+                        return $"{what}: {e.FullName} in {src} is a link or junction, which pack doesn't follow. Fix: copy the files themselves into the folder";
+                    if (e is not FileInfo f) continue;
+                    var rel = Path.GetRelativePath(src, f.FullName);
+                    if (!rel.Contains(Path.DirectorySeparatorChar))
+                        return $"{what}: {f.FullName} is at the top of {src}, where the game never looks inside an archive. Fix: put it in the Data folder it belongs to (Sound\\, Meshes\\ and so on), or move it out";
+                    if (SfModProject.RefusedAssetExtensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase))
+                        return $"{what}: {f.FullName} is a {f.Extension} file, which never goes inside an archive. Fix: move it out of {src}";
+                    count++;
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return $"{what}: the folder {src} can't be read ({e.Message}). Fix: check that this account can read it";
+            }
+            if (count == 0)
+                return $"{what} packs the folder {src}, which holds no files, so the archive would be empty. Fix: put the archive's files in it (laid out like Data), or remove the entry";
+            Log.Write($"archives: {count} file(s) in {src} for {a.Name}");
         }
         return null;
     }
@@ -356,7 +439,7 @@ internal static class Pack
         {
             try
             {
-                foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name })
+                foreach (var name in new[] { project.Ba2Name, project.TexturesBa2Name }.Concat(project.Archives.Select(a => a.Name)).Distinct())
                     foreach (var path in Common.FilesNamed(project.Dist, name))
                         // the archive this build makes is deleted at its exact name by Archive just before Archive2
                         // writes it (so a link there is removed, never written through)

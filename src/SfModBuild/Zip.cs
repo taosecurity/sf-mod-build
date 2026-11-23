@@ -53,6 +53,12 @@ internal static class Zip
             error = $"there is no \"{project.TexturesBa2Name}\" in {project.Dist}, and the mod has loose textures. Fix: run sf-mod-build pack first (or sf-mod-build build)";
             return null;
         }
+        foreach (var a in project.Archives)
+            if (Common.FilesNamed(project.Dist, a.Name).Count == 0)
+            {
+                error = $"there is no \"{a.Name}\" in {project.Dist}, and {project.File} lists it in archives. Fix: run sf-mod-build pack first (or sf-mod-build build)";
+                return null;
+            }
         foreach (var a in project.ZipArchives)
             if (Common.FilesNamed(project.Dist, a).Count == 0)
             {

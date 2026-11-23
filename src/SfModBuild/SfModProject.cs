@@ -29,6 +29,11 @@
 //       "source": "Assets",                        a folder laid out like Data: Meshes\, Materials\, Textures\, ...
 //       "xboxTextures": "Assets-xbox"              optional: Xbox-format .dds files for the _xbox texture archive
 //     },
+//     "archives": [                                more archives pack makes in dist, "<plugin> - <suffix>.ba2" (leave
+//       { "suffix": "Voices", "source": "Voices",  out when unused): a folder laid out like Data, packed with Archive2;
+//         "compression": "none" },                 compression "default" or "none" (sound), format "general" or "dds"
+//       { "suffix": "Extra", "file": "Original/MyMod - Extra.ba2" }   ... or a ready archive, copied as it is
+//     ],                                           Main or Textures only when pack doesn't make that one; not with xbox
 //     "zip": {
 //       "name": "{name}-{version}.zip",            the zip's name (default {name}-{version}.zip)
 //       "folder": ".",                             where the zip is written (default: the sfmod.json folder)
@@ -52,6 +57,10 @@
 // itself: read a downloaded mod's sfmod.json (validate prints every command as a "runs:" line) before building it. A
 // program with a / or \ in it is a path relative to this file's folder; a bare name is looked up on PATH. The working
 // folder is this file's folder. A step command that exits non-zero stops plugin or pack, naming the command.
+//
+// An archives source folder must be inside the mod's folder and apart from dist, stage and creations-out; it may be
+// filled by an afterPlugin step, so pack (not validate) checks that it is there and holds files, with the assets rules
+// (no files at its top; no .psc, plugins, archives or zips). A ready archive (file) may sit anywhere; it is only read.
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -84,9 +93,17 @@ internal sealed class SfModProject
     public bool HasMainArchive => Scripts != null || Assets is { General.Count: > 0 };
     /// <summary>True when the build makes "&lt;plugin&gt; - Textures.ba2": the mod has loose .dds files.</summary>
     public bool HasTexturesArchive => Assets is { Textures.Count: > 0 };
-    /// <summary>The archives the build puts in dist, in the order pack makes them.</summary>
+    /// <summary>The archives pack puts in dist, in the order it makes them: Main and Textures from the scripts and
+    /// assets, then the entries of the top-level archives list.</summary>
     public IEnumerable<string> ArchiveNames =>
-        (HasMainArchive ? new[] { Ba2Name } : Array.Empty<string>()).Concat(HasTexturesArchive ? new[] { TexturesBa2Name } : Array.Empty<string>());
+        (HasMainArchive ? new[] { Ba2Name } : Array.Empty<string>()).Concat(HasTexturesArchive ? new[] { TexturesBa2Name } : Array.Empty<string>())
+        .Concat(Archives.Select(a => a.Name));
+    /// <summary>The top-level archives list: more archives pack makes in dist, each "&lt;plugin&gt; - &lt;suffix&gt;.ba2".</summary>
+    public IReadOnlyList<ExtraArchive> Archives { get; init; } = Array.Empty<ExtraArchive>();
+
+    /// <summary>One entry of the archives list: the archive's file name, and either the folder packed into it (with
+    /// Archive2's compression and format) or a ready archive copied as it is.</summary>
+    public sealed record ExtraArchive(string Name, string? Source, string? File, bool Uncompressed, bool Dds);
     /// <summary>builder.project: the .csproj run with dotnet run, or null when another kind of builder is used.</summary>
     public string? BuilderProject { get; init; }
     /// <summary>builder.command: the program (a full path when it was given as a path, else the bare name looked up
@@ -162,12 +179,13 @@ internal sealed class SfModProject
 
     public const string FileName = "sfmod.json";
 
-    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "zip", "check" };
+    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "archives", "zip", "check" };
+    static readonly string[] ArchiveFields = { "suffix", "source", "file", "compression", "format" };
     static readonly string[] StepsFields = { "afterPlugin", "afterPack" };
     public static readonly string[] StepPlaceholders = { "data", "dist", "scripts", "stage", "version", "name", "plugin" };
     static readonly string[] AssetsFields = { "source", "xboxTextures" };
     // Never packed into an archive: plugins and archives belong at the top of the zip, Papyrus source never ships.
-    static readonly string[] RefusedAssetExtensions = { ".psc", ".esm", ".esp", ".esl", ".ba2", ".zip", ".7z", ".rar" };
+    public static readonly string[] RefusedAssetExtensions = { ".psc", ".esm", ".esp", ".esl", ".ba2", ".zip", ".7z", ".rar" };
     // Artists' source formats the game doesn't read; packed anyway, with a warning, in case the modder means it.
     static readonly string[] SourceArtExtensions = { ".tif", ".tiff", ".fbx", ".wav", ".psd", ".blend", ".png", ".tga", ".jpg", ".jpeg", ".xcf", ".spp" };
     // Left out without a word: system clutter and dot files such as .gitkeep.
@@ -316,20 +334,25 @@ internal sealed class SfModProject
                 if (scripts != null) hold.AddRange(scripts.Sources.Select(s => ("a script source folder", s)));
                 assets = Assets(root, xbox, keep, hold, out assetsOk);
             }
+            var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 }, assets is { Textures.Count: > 0 },
+                dist, stage, creationsOut);
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
             var (checker, checkRequired, checkArgs) = Check(root);
 
             if (plugin == null || name == null || version == null || builder == null || steps == null || dist == null
-                || stage == null || creationsOut == null || !assetsOk || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
+                || stage == null || creationsOut == null || !assetsOk || extra == null || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
                 File = file, Folder = folder, Name = name, Version = version, Plugin = plugin, Scripts = scripts, Assets = assets,
                 BuilderProject = builder.Project, BuilderCommand = builder.Command, BuilderPrebuilt = builder.Prebuilt,
                 BuilderArgs = builder.Args, AfterPlugin = steps.Value.AfterPlugin, AfterPack = steps.Value.AfterPack, Dist = dist, Stage = stage, Xbox = xbox,
-                CreationsOut = creationsOut, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
+                CreationsOut = creationsOut, Archives = extra, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
                 Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
             };
+            foreach (var a in zipArchives)
+                if (extra.Any(x => string.Equals(x.Name, a, StringComparison.OrdinalIgnoreCase)))
+                    Error("zip.archives", $"\"{a}\" is also in the archives list, which pack makes.", "list it in one place only: in archives when pack makes or copies it, in zip.archives when your builder writes it.");
             // archives are refused per entry above, so only the plugin's name is left to check
             foreach (var (_, inZip) in zipFiles)
                 if (string.Equals(inZip, p.Plugin, StringComparison.OrdinalIgnoreCase))
@@ -345,6 +368,122 @@ internal sealed class SfModProject
                 Error("zip.archives", "it can't be used with \"xbox\": true, because pack can't make the Xbox copies of archives your builder writes, so the Creations set would lack them.",
                     "leave \"xbox\" off for this mod, or have pack make the archives instead (put the files in assets.source and leave zip.archives out).");
             return p;
+        }
+
+        /// <summary>The top-level archives list: more archives pack makes in dist. A source folder is only checked for
+        /// where it is (an afterPlugin step may fill it; pack checks its files); a file must exist now. Empty when left
+        /// out; null when it has a PROBLEM.</summary>
+        List<SfModProject.ExtraArchive>? Archives(JsonElement root, string? plugin, bool xbox, bool hasMain, bool hasTextures, string? dist, string? stage, string? creationsOut)
+        {
+            var list = new List<SfModProject.ExtraArchive>();
+            if (!root.TryGetProperty("archives", out var l) || l.ValueKind == JsonValueKind.Null) return list;
+            const string example = "[ { \"suffix\": \"Voices\", \"source\": \"Voices\", \"compression\": \"none\" } ]";
+            if (l.ValueKind != JsonValueKind.Array)
+            {
+                Error("archives", $"it is a {Kind(l)}, not a list.", $"write it as a list of archives, for example \"archives\": {example}.");
+                return null;
+            }
+            var before = problems.Count(x => !x.IsWarning);
+            if (xbox && l.GetArrayLength() > 0)
+                Error("archives", "it can't be used with \"xbox\": true in this version: pack can't make a correct Xbox copy of these archives (a PC .wem plays silent on Xbox, and a copied archive has no Xbox copy), so the Creations set would lack them.",
+                    "leave \"xbox\" off for this mod, or put the files in assets.source so pack makes Main and Textures for both platforms.");
+            var stem = plugin != null ? Path.GetFileNameWithoutExtension(plugin) : null;
+            var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var i = 0;
+            foreach (var e in l.EnumerateArray())
+            {
+                var at = $"archives[{i++}]";
+                if (e.ValueKind != JsonValueKind.Object)
+                {
+                    Error(at, $"it is a {Kind(e)}, not an object.", $"write each archive as an object, for example {example}.");
+                    continue;
+                }
+                Fields(e, at + ".", ArchiveFields);
+                var suffix = String(e, "suffix", required: true, example: "\"Voices\"", field: at + ".suffix");
+                if (suffix != null)
+                {
+                    if (!GoodFileName(suffix) || suffix.Contains('/') || suffix.Contains('\\') || suffix.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Error(at + ".suffix", $"\"{suffix}\" can't be the end of an archive name (it has / \\ : * ? \" < > |, spaces at an end, or .ba2).", "give only the word after \"<plugin> - \", for example \"Voices\" (the archive is then \"MyMod - Voices.ba2\").");
+                        suffix = null;
+                    }
+                    else if (suffix.Equals("Main", StringComparison.OrdinalIgnoreCase) || suffix.Equals("Textures", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var main = suffix.Equals("Main", StringComparison.OrdinalIgnoreCase);
+                        suffix = main ? "Main" : "Textures";
+                        if (main ? hasMain : hasTextures)
+                        {
+                            Error(at + ".suffix", main ? "pack already makes \"<plugin> - Main.ba2\" from the scripts and the general loose files."
+                                : "pack already makes \"<plugin> - Textures.ba2\" from the .dds files in assets.source.",
+                                "give the archive another suffix, or move its files into assets.source and remove this entry.");
+                            suffix = null;
+                        }
+                    }
+                    else if (suffix.Equals("Main_xbox", StringComparison.OrdinalIgnoreCase) || suffix.Equals("Textures_xbox", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Error(at + ".suffix", $"\"{suffix}\" is the name pack uses for its own Xbox archives.", "give the archive another suffix, for example \"Voices\".");
+                        suffix = null;
+                    }
+                }
+                string? name = suffix != null && stem != null ? $"{stem} - {suffix}.ba2" : null;
+                if (name != null && !taken.Add(name))
+                {
+                    Error(at + ".suffix", $"\"{name}\" is in the archives list twice.", "give each archive its own suffix.");
+                    name = null;
+                }
+                var kinds = new[] { "source", "file" }.Where(k => e.TryGetProperty(k, out var v) && v.ValueKind != JsonValueKind.Null).ToList();
+                if (kinds.Count != 1)
+                {
+                    Error(at, kinds.Count == 0 ? "it gives neither \"source\" nor \"file\"." : "it gives both \"source\" and \"file\".",
+                        "give exactly one: \"source\", a folder laid out like Data to pack, or \"file\", a ready .ba2 to copy as it is.");
+                    continue;
+                }
+                string? source = null, file = null;
+                bool uncompressed = false, dds = false;
+                if (kinds[0] == "source")
+                {
+                    source = Folder(e, "source", "Voices", at + ".source");
+                    if (source != null && !IsUnder(source, folder))
+                    {
+                        Error(at + ".source", $"{source} isn't a folder inside the mod's folder {folder}.", "give a folder inside the mod's folder, relative to sfmod.json, for example \"Voices\".");
+                        source = null;
+                    }
+                    foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
+                        if (source != null && path != null && (SamePath(source, path) || IsUnder(source, path) || IsUnder(path, source)))
+                        {
+                            Error(at + ".source", $"{source} is, holds or is inside {field} ({path}), which the build empties.", "keep the archive's files in a folder of their own, for example \"Voices\".");
+                            source = null;
+                        }
+                    var compression = String(e, "compression", required: false, example: "\"none\"", field: at + ".compression") ?? "default";
+                    if (compression is not ("default" or "none"))
+                        Error(at + ".compression", $"\"{compression}\" isn't a compression pack knows.", "write \"default\", or \"none\" for sound (.wem) and lip files, which play silent when stored compressed.");
+                    var format = String(e, "format", required: false, example: "\"dds\"", field: at + ".format") ?? "general";
+                    if (format is not ("general" or "dds"))
+                        Error(at + ".format", $"\"{format}\" isn't an archive format pack knows.", "write \"general\" (meshes, sounds and other files) or \"dds\" (textures only).");
+                    uncompressed = compression == "none";
+                    dds = format == "dds";
+                }
+                else
+                {
+                    foreach (var k in new[] { "compression", "format" })
+                        if (e.TryGetProperty(k, out var v) && v.ValueKind != JsonValueKind.Null)
+                            Error($"{at}.{k}", "a ready archive is copied as it is, so it isn't packed with a compression or format.", $"remove {k}, or use \"source\" to have pack make the archive.");
+                    var value = String(e, "file", required: true, example: "\"Original/MyMod - Voices.ba2\"", field: at + ".file");
+                    if (value != null && PathOf(value, at + ".file") is { } full)
+                    {
+                        if (!full.EndsWith(".ba2", StringComparison.OrdinalIgnoreCase))
+                            Error(at + ".file", $"\"{value}\" doesn't end in .ba2.", "give the ready archive file, for example \"Original/MyMod - Voices.ba2\".");
+                        else if (NamesFolder(value) || !System.IO.File.Exists(full))
+                            Error(at + ".file", Directory.Exists(full) ? $"{full} is a folder, not an archive." : $"{full} isn't there.", "give the ready archive file, relative to sfmod.json.");
+                        else if (new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) }.FirstOrDefault(x => x.Item2 != null && IsUnder(full, x.Item2)) is { Item1: { } field, Item2: { } path })
+                            Error(at + ".file", $"{full} is inside {field} ({path}), which the build empties before it is copied.", "keep the ready archive in a folder of its own, outside dist, stage and creations-out.");
+                        else file = full;
+                    }
+                }
+                if (name != null && (source != null || file != null))
+                    list.Add(new SfModProject.ExtraArchive(name, source, file, uncompressed, dds));
+            }
+            return problems.Count(x => !x.IsWarning) == before ? list : null;
         }
 
         /// <summary>The assets section: the folder of loose files and, optionally, Xbox-format textures. Every file is

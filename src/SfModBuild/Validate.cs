@@ -54,6 +54,9 @@ internal static class Validate
                 + (p.Assets.UncompressedMain ? " (sound or lip files, so Main is packed uncompressed)" : ""));
             if (p.Assets.XboxTextures != null) o.WriteLine($"          Xbox textures from {p.Assets.XboxTextures}: {p.Assets.XboxTextureFiles.Count} file(s)");
         }
+        foreach (var a in p.Archives)
+            o.WriteLine(a.File != null ? $"archive:  \"{a.Name}\" copied from {a.File}"
+                : $"archive:  \"{a.Name}\" packed from {a.Source}" + (a.Uncompressed ? ", uncompressed" : "") + (a.Dds ? ", format DDS" : ""));
         if (p.Scripts == null) o.WriteLine("scripts:  none");
         else
         {

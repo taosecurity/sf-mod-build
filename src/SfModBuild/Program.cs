@@ -38,7 +38,8 @@ namespace SfModBuild
             "              any command (builder.command), or a ready plugin copied in (builder.prebuilt); then the\n" +
             "              project's steps.afterPlugin commands\n" +
             "  pack        pack the compiled scripts and loose files into the BA2s with the Creation Kit's Archive2\n" +
-            "              (Main and Textures, and the _xbox ones for Creations); then steps.afterPack\n" +
+            "              (Main and Textures, and the _xbox ones for Creations), make the project's archives list\n" +
+            "              (packed from a folder, or a ready archive copied); then steps.afterPack\n" +
             "  zip         write the mod's zip reproducibly (same files, same bytes)\n" +
             "  check       run sf-mod-check (or sfmodcheck) release on the zip\n" +
             "  build       compile, plugin, pack, zip and check in order\n" +

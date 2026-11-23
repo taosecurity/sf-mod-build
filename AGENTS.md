@@ -95,6 +95,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Run one more job of the mod's own after the plugin or the archives are made (copy voice files, move Strings
   tables, check the archives): add it to `steps.afterPlugin` or `steps.afterPack` in `sfmod.json` (section 6),
   then `sf-mod-build validate` to see its `runs:` line.
+- Ship a voice archive or a ready archive (another author's original): add an entry to the top-level `archives`
+  list, `{ "suffix": "Voices", "source": "Voices", "compression": "none" }` (a folder laid out like Data, packed
+  uncompressed so the `.wem` files play) or `{ "suffix": "Textures", "file": "Original/MyMod - Textures.ba2" }`
+  (copied as it is). pack makes `<Plugin> - <suffix>.ba2` in dist and zip ships it. Not with `"xbox": true`.
 - One step at a time: `sf-mod-build compile`, `sf-mod-build plugin`, `sf-mod-build pack`, `sf-mod-build zip`,
   `sf-mod-build check` (each needs the steps before it to have run).
 - Troubleshoot: add `--verbose`, or `--log sf-mod-build-log.txt`, to any command.
@@ -121,6 +125,13 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   such as `RESULT: FAILED at steps.afterPack[1] (python.exe exited with code 3)`. A failed builder or Archive2 run
   skips the steps. These run whatever they name too, and validate shows each one as a `runs:` line.
 - Loose files under `assets.source` (and Xbox textures under `assets.xboxTextures`), when the project has them.
+- Optional top-level `archives`: a list of `{ "suffix", "source" or "file", "compression": "default" | "none",
+  "format": "general" | "dds" }`. A `source` folder must be inside the mod's folder and apart from dist, stage and
+  creations-out; validate doesn't look inside it (a `steps.afterPlugin` command may fill it), and pack stops with
+  exit 2 before Archive2 runs when it is missing, empty, holds a file at its top, a link, or a `.psc`, plugin,
+  archive or zip. A `file` is a ready `.ba2` that must exist (it may be outside the mod; it is only read);
+  `compression` and `format` are refused with it. The suffix may be `Main` or `Textures` only when pack doesn't make
+  that archive itself. Refused with `"xbox": true`, and a name can't also be in `zip.archives`.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
   `CreationKitCustom.ini` in the game folder, and `Data\Scripts\Source` (read, never written).
@@ -131,6 +142,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - `<dist>\<Plugin>.esm` and `<dist>\<Plugin> - Main.ba2` (default `dist`), emptied and refilled by `plugin`.
 - With loose textures: `<dist>\<Plugin> - Textures.ba2`. A mod with loose files but no scripts may have no Main
   archive. pack copies the loose files into `<stage>\pack\` first.
+- With an `archives` list: `<dist>\<Plugin> - <suffix>.ba2` for each entry (packed from its `source`, or copied from
+  its `file`). zip ships them, and stops with exit 2, naming the archive, when one isn't in dist.
 - With `"xbox": true`: `creations-out\` with dist's files plus `<Plugin> - Main_xbox.ba2` (and
   `<Plugin> - Textures_xbox.ba2` when there are textures).
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
@@ -178,4 +191,5 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Don't hand-edit files in dist, stage or creations-out: the next build empties them.
 - Archives the builder writes itself into dist ship only when their file names are listed in `zip.archives` (since
   0.3.0); they can't be used with `"xbox": true`. Otherwise put their files in the assets folder, so pack builds
-  them into the mod's own archives.
+  them into the mod's own archives, or use the `archives` list (since 0.4.0) for a folder pack should pack as its
+  own archive or a ready archive to copy; that can't be used with `"xbox": true` either.

@@ -9,6 +9,7 @@
 - `builder.prebuilt` copies a ready plugin (made in the Creation Kit or by hand) into dist under the `plugin` name. It takes no `args`, and `plugin` needs neither the game nor .NET for it.
 - `validate` now prints a `runs:` line with the command a build would run. Read it before you build a mod someone else made: `builder.command` runs whatever program it names.
 - `steps.afterPlugin` and `steps.afterPack` in sfmod.json: lists of your own commands, each written like `builder.command`, run in order at the end of `plugin` and at the end of `pack`. Running a step on its own runs its commands too, so `build` and one step at a time give the same result. They take the builder placeholders plus `{name}` and `{plugin}`. A missing program stops the step before any work (exit 2); a command that exits non-zero stops it (exit 1) with a RESULT line naming the command. `validate` prints one `runs:` line per command.
+- A top-level `archives` list in sfmod.json: more archives that `pack` makes in dist, each named `<plugin> - <suffix>.ba2`. An entry either packs a `source` folder laid out like Data (with `"compression": "none"` for voice files, which play silent when stored compressed, and `"format": "dds"` for textures) or copies a ready archive from `file` as it is. These archives ship in the zip, `pack` deletes their old copies, and they never count as stray. The suffix may be `Main` or `Textures` only when `pack` doesn't make that archive itself. `pack` checks a source folder's files (a `steps.afterPlugin` command may fill it) and stops with exit 2 before Archive2 runs when it is missing, empty or holds a file that doesn't belong. `validate` prints an `archive:` line for each entry. In this version the list can't be used with `"xbox": true`.
 
 ### Example
 
@@ -40,6 +41,21 @@ and a made-up mod with one step after pack that fails, `"steps": { "afterPack": 
     FAILED   steps.afterPack[0] (python.exe) exited with code 3
              after.py: C:\Mods\StepsMod\dist/missing.txt is missing
     RESULT: FAILED at steps.afterPack[0] (python.exe exited with code 3). Fix: fix the error shown above (the full output is in the log: --log <file>), or the command in C:\Mods\StepsMod\sfmod.json, and run again.
+
+and a made-up mod with a voice folder and a ready archive, `"archives": [ { "suffix": "Voices", "source": "Voices", "compression": "none" }, { "suffix": "Extra", "file": "Original/Other - Extra.ba2" } ]`:
+
+    > sf-mod-build validate
+    ...
+    archive:  "VoiceMod - Voices.ba2" packed from C:\Mods\VoiceMod\Voices, uncompressed
+    archive:  "VoiceMod - Extra.ba2" copied from C:\Mods\VoiceMod\Original\Other - Extra.ba2
+    ...
+              holds VoiceMod.esm, VoiceMod - Voices.ba2, VoiceMod - Extra.ba2
+    RESULT: OK
+
+    > sf-mod-build pack
+    packed   C:\Mods\VoiceMod\dist\VoiceMod - Voices.ba2 (127 bytes)
+    copied   C:\Mods\VoiceMod\dist\VoiceMod - Extra.ba2 from C:\Mods\VoiceMod\Original\Other - Extra.ba2 (23 bytes)
+    RESULT: OK, "VoiceMod - Voices.ba2" and "VoiceMod - Extra.ba2" made in C:\Mods\VoiceMod\dist
 
 ### Fixed
 
