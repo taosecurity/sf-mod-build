@@ -80,6 +80,9 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`
 - Build with a checker that isn't on PATH: `sf-mod-build build --checker "<path>\sf-mod-check.exe"`
 - Fail the build when no checker is found: `sf-mod-build build --require-check`
+- Check a mod whose master plugin isn't in the Data folder (for example another mod's folder in the mod manager):
+  `sf-mod-build build --masters-dir "<folder holding the master>"` (or `sf-mod-build check`; give it once per
+  folder). It is passed to the checker; a folder that isn't there stops the build with exit 2 before it starts.
 - Which game is used: the Steam copy when there is one (the Creation Kit's tools are only there), else Game Pass;
   `doctor` lists any other copy as a note. To pick one, or when none is found, add
   `--game "<folder holding Starfield.exe>"`.
@@ -147,7 +150,12 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 ## 7. Outputs
 
 - `<stage>\Scripts\<Namespace>\*.pex` (default `.build\stage`), emptied and refilled by `compile`.
-- `<dist>\<Plugin>.esm` and `<dist>\<Plugin> - Main.ba2` (default `dist`), emptied and refilled by `plugin`.
+- `<dist>\<Plugin>.esm` and `<dist>\<Plugin> - Main.ba2` (default `dist`). Before the builder runs, `plugin` deletes
+  only what earlier builds made in dist: the names in `<dist>\.sf-mod-build-made` (what the builder, sf-mod-build
+  and the steps wrote last time; it never goes in the zip), plugins and `.ba2` files. Zips stay. Anything else
+  there (a folder or file the person keeps in dist) stops `plugin` with exit 2, naming each one, and nothing is
+  deleted: ask the person to move it out of dist. After an update from 0.3.0 or earlier the first build may name
+  the builder's own extra files this way once; they can be deleted.
 - With loose textures: `<dist>\<Plugin> - Textures.ba2`. A mod with loose files but no scripts may have no Main
   archive. pack copies the loose files into `<stage>\pack\` first.
 - With `parts`: each part plugin in dist (written by the builder; `plugin` exits 1 when one is missing), and for a
@@ -175,7 +183,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - 0: OK (warnings allowed).
 - 1: the build or the check failed (compiler errors, builder failure, a `steps` command that exited non-zero, checker found problems).
-- 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder, an archive in dist the build doesn't make).
+- 2: bad input or setup (wrong option, broken sfmod.json, missing tool, `-release` asked for, unsafe folder, an archive in dist the build doesn't make, a file or folder in dist that no earlier build made, a `--masters-dir` that isn't a folder).
 
 ## 9. The log
 
@@ -188,8 +196,9 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - Never compiles with `-release` and has no option for it (it strips every `Debug.Trace`).
 - Never writes into the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist folder
-  that is a link or junction (with nothing to pack, a creations-out folder too), and never empties a folder
-  that is or holds the mod folder, a source folder, the builder or a drive root.
+  that is a link or junction (with nothing to pack, a creations-out folder too; in plugin, any dist that is a
+  link or junction), and never empties a folder that is or holds the mod folder, a source folder, the builder or
+  a drive root. It never deletes a file or folder in dist that no earlier build made.
 - Never uploads anything, never changes the game's files, never edits the person's load order or mod manager.
 - Never packs an assets folder that is in the game's folder or holds it, the mod's own folder, dist, stage,
   creations-out, the builder or a script source folder; validate refuses those.
@@ -202,7 +211,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   in the person's own script after `sf-mod-build build`.
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
-- Don't hand-edit files in dist, stage or creations-out: the next build empties them.
+- Don't hand-edit files in dist, stage or creations-out: the next build empties stage and creations-out and
+  deletes the files earlier builds made in dist.
 - Archives the builder writes itself into dist ship only when their file names are listed in `zip.archives` (since
   0.3.0); they can't be used with `"xbox": true`. Otherwise put their files in the assets folder, so pack builds
   them into the mod's own archives, or use the `archives` list (since 0.4.0) for a folder pack should pack as its

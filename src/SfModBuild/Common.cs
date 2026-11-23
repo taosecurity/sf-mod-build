@@ -123,7 +123,7 @@ internal static class Common
     {
         var name = Path.GetFileName(file);
         if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".psc", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith(Zip.PartialSuffix, StringComparison.OrdinalIgnoreCase))
+            || name.EndsWith(Zip.PartialSuffix, StringComparison.OrdinalIgnoreCase) || Same(name, MadeList))
             return false;
         return Log.FilePath is not { } log || !Same(Full(log), Full(file));
     }
@@ -163,6 +163,118 @@ internal static class Common
         Directory.Exists(folder)
             ? Directory.GetFiles(folder).Where(f => Same(Path.GetFileName(f), name)).Order(StringComparer.Ordinal).ToList()
             : new List<string>();
+
+    /// <summary>The list in dist of what sf-mod-build and the mod's own builder and steps put there (one name per
+    /// line), so the next build deletes those and nothing else. It never goes in the zip or the Creations set.</summary>
+    public const string MadeList = ".sf-mod-build-made";
+
+    /// <summary>File kinds only a build puts in dist: plugins and archives. They are deleted from dist before the
+    /// builder runs, as are half-written zips. Zips are kept (zip overwrites its own).</summary>
+    static readonly string[] BuildKinds = { ".esm", ".esp", ".esl", ".ba2" };
+
+    /// <summary>The top-level names in dist, or null when it isn't there, is a link or can't be read.</summary>
+    public static HashSet<string>? DistEntries(string dist)
+    {
+        try
+        {
+            var d = new DirectoryInfo(Path.TrimEndingDirectorySeparator(dist));
+            if (!d.Exists || d.LinkTarget != null) return null;
+            return d.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }).Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    static bool PlainName(string name) =>
+        name.Length > 0 && name != "." && name != ".." && name.IndexOfAny(new[] { '/', '\\', ':' }) < 0 && name.Trim() == name;
+
+    static HashSet<string> ReadMadeList(string dist)
+    {
+        var file = Path.Combine(dist, MadeList);
+        if (!File.Exists(file)) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // only plain names count, so a hand-edited list can't reach outside dist
+        return File.ReadAllLines(file).Where(PlainName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Writes the names (never zips or the list itself) into dist's made list; with add, the names already
+    /// listed stay. Does nothing when dist isn't there or is a link. A failure is only logged: it means the next
+    /// build names those files and stops, never that it deletes something.</summary>
+    public static void RecordMade(string dist, IEnumerable<string> names, bool add)
+    {
+        try
+        {
+            var mine = names.Where(n => PlainName(n) && !Same(n, MadeList) && !n.EndsWith(".zip", PathCase)).ToList();
+            if ((add && mine.Count == 0) || DistEntries(dist) == null) return;
+            var list = add ? ReadMadeList(dist) : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            list.UnionWith(mine);
+            File.WriteAllLines(Path.Combine(dist, MadeList), list.Order(StringComparer.OrdinalIgnoreCase));
+            Log.Write($"made list in {dist}: {string.Join(", ", list.Order(StringComparer.OrdinalIgnoreCase))}");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Write($"the made list in {dist} couldn't be written: {e.Message}");
+        }
+    }
+
+    /// <summary>Runs a step that writes into dist, then adds whatever new it left there to the made list.</summary>
+    public static int TrackDist(string? dist, Func<int> run)
+    {
+        var before = dist == null ? null : DistEntries(dist);
+        var code = run();
+        if (dist != null && DistEntries(dist) is { } after)
+            RecordMade(dist, after.Where(n => before == null || !before.Contains(n)), add: true);
+        return code;
+    }
+
+    /// <summary>Gets dist ready for a new plugin, deleting only what earlier builds made there: the names in the made
+    /// list, plugin and archive files, and half-written zips. Zips stay. When dist holds anything else (a folder or
+    /// file the user keeps there), nothing is deleted and the reason names each one. Null when done, else why it
+    /// can't (with the fix).</summary>
+    public static string? CleanDist(SfModProject project)
+    {
+        var folder = project.Dist;
+        if (Log.FilePath is { } log && Under(Full(log), Full(folder)))
+            return $"the log file {log} is inside {folder}, where the plugin's files go. Fix: give --log a file outside the mod's output folders";
+        try
+        {
+            var d = new DirectoryInfo(Path.TrimEndingDirectorySeparator(folder));
+            if (!d.Exists)
+            {
+                Directory.CreateDirectory(folder);
+                return null;
+            }
+            // deleting files through a link would delete them wherever it points (a game's Data folder included)
+            if (d.LinkTarget is { } to)
+                return $"the dist folder {folder} is a link or junction to {to}, so deleting the earlier build's files there would delete them wherever it points. Fix: in {project.File}, set \"dist\" to a real folder of its own, for example \"dist\"";
+            var made = ReadMadeList(folder);
+            var delete = new List<FileSystemInfo>();
+            var foreign = new List<string>();
+            foreach (var e in d.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }).OrderBy(e => e.Name, StringComparer.Ordinal))
+            {
+                var n = e.Name;
+                var file = e is FileInfo;
+                if (file && n.EndsWith(".zip", PathCase)) continue;
+                if (Same(n, MadeList) || made.Contains(n)
+                    || (file && (BuildKinds.Any(k => n.EndsWith(k, PathCase)) || n.EndsWith(Zip.PartialSuffix, PathCase))))
+                    delete.Add(e);
+                else foreign.Add(file ? $"\"{n}\"" : $"\"{n}\" (a folder)");
+            }
+            if (foreign.Count > 0)
+                return $"the dist folder {folder} holds {string.Join(", ", foreign)}, which no earlier build listed as its own, and sf-mod-build never deletes what it didn't make, so nothing was deleted. "
+                       + $"Fix: move {(foreign.Count == 1 ? "it" : "them")} out of dist and run again (a build by sf-mod-build 0.3.0 or earlier left no list of what it made, so its builder's other files are named here once), or set \"dist\" in {project.File} to a folder of its own";
+            foreach (var e in delete)
+            {
+                // a link is removed, never what it points to
+                if (e is DirectoryInfo sub) { if (sub.LinkTarget != null) sub.Delete(); else sub.Delete(recursive: true); }
+                else e.Delete();
+                Log.Write($"deleted from dist (made by an earlier build): {e.FullName}");
+            }
+            return null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"{folder} can't be cleaned out: {e.Message} Fix: close any program using files there and run again";
+        }
+    }
 
     /// <summary>Deletes the folder (when there) and makes it again, empty. Null when done, else why it failed.</summary>
     public static string? Empty(string folder)

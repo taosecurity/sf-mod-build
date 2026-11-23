@@ -216,11 +216,11 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build doctor [--game <folder>] [--checker <exe>] [--my-games <folder>]` | Finds the game, the Creation Kit's tools, .NET and the checker, and says how to get anything missing. Then it checks your setup (see [Setup checks](#setup-checks-in-doctor)). |
 | `sf-mod-build validate [<sfmod.json>]` | Checks the project file and prints what a build would use. Each problem names the field and the fix. |
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first), and each part's scripts into `<stage>\parts\<part>\Scripts` (see [More plugins](#more-plugins-parts)). Never `-release`: asking for it is refused with the reason. |
-| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Empties dist and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). It stops (exit 1) when a plugin listed in `parts` isn't in dist. Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
+| `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Deletes what earlier builds made in dist (see [What dist may hold](#what-dist-may-hold)) and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). It stops (exit 1) when a plugin listed in `parts` isn't in dist. Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`. It also packs each part's scripts into `<part> - Main.ba2` and makes each archive in the `archives` list (see [More archives](#more-archives-voices-and-ready-archives)). Then it runs your `steps.afterPack` commands. |
 | `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives`, or a plugin or archive of `parts`, that isn't in dist. `zip.files` takes no archives. |
-| `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. No checker is a WARNING, or a failure with `--require-check`. |
-| `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
+| `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. Each `--masters-dir` (it can be given more than once) is passed to the checker, for a master plugin that isn't in the Data folder, such as another mod's folder in your mod manager; a folder that isn't there stops it with exit 2. No checker is a WARNING, or a failure with `--require-check`. |
+| `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
 
 Options for every command: `--verbose` (troubleshooting log on stderr), `--log <file>` (the same log with times, in
@@ -229,6 +229,21 @@ a file), `--help`.
 The game's script sources are unpacked from `Tools\ContentResources.zip` once (only `Scripts\Source\*.psc` and the
 flags file) into `%LOCALAPPDATA%\sf-mod-build\vanilla\<sha256 of the zip>\`, and reused until the Creation Kit
 updates that zip. On Linux the folder is `$XDG_DATA_HOME/sf-mod-build` (or `~/.local/share/sf-mod-build`).
+
+### What dist may hold
+
+sf-mod-build never deletes a file or folder in dist that it didn't make. Before the builder runs, `plugin` deletes
+what earlier builds made there: the names in dist's `.sf-mod-build-made` list (what the builder, sf-mod-build and
+your steps wrote last time), plugins (`.esm`, `.esp`, `.esl`) and archives (`.ba2`). Zips stay. When dist holds
+anything else, such as a folder of old copies you keep there, `plugin` deletes nothing and stops with exit 2,
+naming each one:
+
+    > sf-mod-build plugin
+    RESULT: CANNOT BUILD THE PLUGIN (the dist folder C:\Mods\MyMod\dist holds "notes.txt", "old" (a folder), which no earlier build listed as its own, and sf-mod-build never deletes what it didn't make, so nothing was deleted. Fix: move them out of dist and run again (...), or set "dist" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+
+Move them out of dist. The first build after you update from 0.3.0 or earlier may name your builder's own extra
+files this way once, because those versions left no list; delete them and run again. The list never goes in the
+zip or the Creations set.
 
 ## The project file, sfmod.json
 
@@ -582,7 +597,7 @@ tool stops on an unexpected error, it says so in one `RESULT: CANNOT RUN` line a
 |---|---|
 | 0 | OK (a missing checker is only a WARNING, unless you require the check) |
 | 1 | the build or the check failed (a script didn't compile, the builder failed, a `steps` command exited non-zero, the checker found problems) |
-| 2 | bad input or setup (a wrong option, a broken sfmod.json, a missing tool, `-release` asked for, an archive in dist that the build doesn't make) |
+| 2 | bad input or setup (a wrong option, a broken sfmod.json, a missing tool, `-release` asked for, an archive in dist that the build doesn't make, a file or folder in dist that no earlier build made) |
 
 ## Found a mistake?
 

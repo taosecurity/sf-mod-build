@@ -569,7 +569,7 @@ internal sealed class SfModProject
                         else if (NamesFolder(value) || !System.IO.File.Exists(full))
                             Error(at + ".file", Directory.Exists(full) ? $"{full} is a folder, not an archive." : $"{full} isn't there.", "give the ready archive file, relative to sfmod.json.");
                         else if (new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) }.FirstOrDefault(x => x.Item2 != null && IsUnder(full, x.Item2)) is { Item1: { } field, Item2: { } path })
-                            Error(at + ".file", $"{full} is inside {field} ({path}), which the build empties before it is copied.", "keep the ready archive in a folder of its own, outside dist, stage and creations-out.");
+                            Error(at + ".file", $"{full} is inside {field} ({path}), which the build clears before it is copied.", "keep the ready archive in a folder of its own, outside dist, stage and creations-out.");
                         else file = full;
                     }
                 }

@@ -1,5 +1,5 @@
 // sf-mod-build check [sfmod.json]: runs the release checker (sf-mod-check, called sfmodcheck before its rename) on the
-// mod's zip: <checker> release "<zip>" [--data "<game>\Data"] <check.args>. The checker is --checker, else
+// mod's zip: <checker> release "<zip>" [--data "<game>\Data"] [--masters-dir "<folder>"]... <check.args>. The checker is --checker, else
 // check.checker in sfmod.json, else sf-mod-check or sfmodcheck on PATH. --data is added when the game is known and
 // check.args doesn't give it, so a Game Pass or other non-default install is checked against its own Data folder.
 // Exit: the checker's own code (0 OK, 1 FAIL, 2 it couldn't run). No checker: a WARNING and exit 0, unless
@@ -9,11 +9,35 @@ namespace SfModBuild;
 internal static class Check
 {
     public const string Usage =
-        "usage: sf-mod-build check [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--require-check] [--verbose] [--log <file>]\n" +
+        "usage: sf-mod-build check [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check] [--verbose] [--log <file>]\n" +
         "  runs sf-mod-check (or sfmodcheck) release on the mod's zip; without a checker this is a WARNING,\n" +
-        "  or a failure with --require-check (or \"check\": { \"required\": true } in sfmod.json)";
+        "  or a failure with --require-check (or \"check\": { \"required\": true } in sfmod.json);\n" +
+        "  --masters-dir (can be given more than once) is passed to the checker, for a master that isn't in the Data folder";
 
-    public static readonly ArgSpec Spec = new(new[] { "--game", "--checker" }, new[] { "--require-check" }, MaxPositionals: 1);
+    public static readonly ArgSpec Spec = new(new[] { "--game", "--checker", "--masters-dir" }, new[] { "--require-check" }, MaxPositionals: 1, Repeatable: new[] { "--masters-dir" });
+
+    /// <summary>The --masters-dir folders as full paths, or null (with the RESULT line printed) when one isn't a folder.</summary>
+    public static List<string>? MastersDirs(ParsedArgs p, TextWriter stdout)
+    {
+        var dirs = new List<string>();
+        foreach (var given in p.GetAll("--masters-dir"))
+        {
+            string full;
+            try { full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(given.Trim().Trim('"'))); }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                stdout.WriteLine($"RESULT: CANNOT CHECK (--masters-dir \"{given}\" isn't a usable folder path: {e.Message}. Fix: give the folder that holds the master plugin).");
+                return null;
+            }
+            if (!Directory.Exists(full))
+            {
+                stdout.WriteLine($"RESULT: CANNOT CHECK (--masters-dir {full} isn't a folder. Fix: give the folder that holds the master plugin).");
+                return null;
+            }
+            dirs.Add(full);
+        }
+        return dirs;
+    }
 
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(15);
 
@@ -22,6 +46,8 @@ internal static class Check
         var project = Common.LoadProject(p, stdout, "CANNOT CHECK");
         if (project == null) return ExitCodes.BadInput;
         var required = p.Has("--require-check") || project.CheckRequired;
+        var masters = MastersDirs(p, stdout);
+        if (masters == null) return ExitCodes.BadInput;
 
         string? checker;
         if (p.Get("--checker") is { } given)
@@ -72,7 +98,7 @@ internal static class Check
             if (game != null) data = Path.Combine(game.Folder, "Data");
             else Log.Write("check: the game wasn't found, so the checker uses its own default Data folder");
         }
-        var line = CommandLine(zip, data, project.CheckArgs);
+        var line = CommandLine(zip, data, masters.SelectMany(m => new[] { "--masters-dir", m }).Concat(project.CheckArgs));
         stdout.WriteLine($"checking {Path.GetFileName(zip)} with {Path.GetFileName(checker)}");
         Log.Write($"checker: in {project.Folder}: \"{checker}\" {line}");
         var r = env.Exec(checker, line, project.Folder, Timeout);

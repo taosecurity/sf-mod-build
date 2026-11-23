@@ -11,6 +11,7 @@
 - `steps.afterPlugin` and `steps.afterPack` in sfmod.json: lists of your own commands, each written like `builder.command`, run in order at the end of `plugin` and at the end of `pack`. Running a step on its own runs its commands too, so `build` and one step at a time give the same result. They take the builder placeholders plus `{name}` and `{plugin}`. A missing program stops the step before any work (exit 2); a command that exits non-zero stops it (exit 1) with a RESULT line naming the command. `validate` prints one `runs:` line per command.
 - A top-level `archives` list in sfmod.json: more archives that `pack` makes in dist, each named `<plugin> - <suffix>.ba2`. An entry either packs a `source` folder laid out like Data (with `"compression": "none"` for voice files, which play silent when stored compressed, and `"format": "dds"` for textures) or copies a ready archive from `file` as it is. These archives ship in the zip, `pack` deletes their old copies, and they never count as stray. The suffix may be `Main` or `Textures` only when `pack` doesn't make that archive itself. `pack` checks a source folder's files (a `steps.afterPlugin` command may fill it) and stops with exit 2 before Archive2 runs when it is missing, empty or holds a file that doesn't belong. `validate` prints an `archive:` line for each entry. In this version the list can't be used with `"xbox": true`.
 - `parts` in sfmod.json: the other plugins your builder writes into dist, each `{ "plugin": "MyMod-Extra.esm" }` with optional `scripts` of its own (the same shape as the top-level `scripts`; `source` defaults to the top-level source folders). `compile` compiles a part's scripts into `<stage>/parts/<part>/Scripts`, `pack` packs them into `<part> - Main.ba2`, `plugin` stops (exit 1) when a part plugin isn't in dist, and `zip` ships every plugin and archive and stops (exit 2) when one is missing. `validate` prints a `part:` line for each and refuses a part named like the main plugin or another part, a name that breaks the plugin-name rules, a script in two places, and `parts` with `builder.prebuilt`. In this version a part with scripts can't be used with `"xbox": true`.
+- `check` and `build` take `--masters-dir <folder>`, which can be given more than once, and pass each folder to sf-mod-check's `release`. Use it for a mod whose master plugin isn't in the Data folder, such as another mod's folder in your mod manager. A folder that isn't there stops `check`, or `build` before it starts, with exit 2.
 - The release now has a `<file>.sha256` beside each download, as well as `SHA256SUMS`, so a tool can check one download on its own.
 
 ### Example
@@ -84,8 +85,14 @@ and a made-up mod whose Python builder writes three plugins, with `"parts": [ { 
     zipped   PartsMod.esm
     ...
 
+and a made-up mod whose dist holds a folder of old copies:
+
+    > sf-mod-build plugin
+    RESULT: CANNOT BUILD THE PLUGIN (the dist folder C:\Mods\MyMod\dist holds "old" (a folder), which no earlier build listed as its own, and sf-mod-build never deletes what it didn't make, so nothing was deleted. Fix: move it out of dist and run again (a build by sf-mod-build 0.3.0 or earlier left no list of what it made, so its builder's other files are named here once), or set "dist" in C:\Mods\MyMod\sfmod.json to a folder of its own).
+
 ### Fixed
 
+- `plugin` no longer deletes files and folders in dist that it didn't make. Before, it emptied dist on every build, so a folder you kept there (old copies, notes) was deleted without a word. Now it deletes only what earlier builds made there (the names in dist's new `.sf-mod-build-made` list, plugins and `.ba2` archives) and keeps zips. When dist holds anything else, it deletes nothing and stops with exit 2, naming each one and the fix. The first build after an update from 0.3.0 or earlier may name your builder's own extra files this way once, because those versions kept no list; delete them and run again. A dist folder that is a link or junction is refused too. 0.3.0 and earlier have this problem.
 - AGENTS.md no longer says that archives your builder writes aren't supported: they have shipped through `zip.archives` since 0.3.0.
 
 ## 0.3.0 (2026-11-23)

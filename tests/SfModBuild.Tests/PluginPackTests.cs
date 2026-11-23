@@ -87,7 +87,7 @@ public partial class PluginPackTests
         var (t, sfmod, game, env) = Setup();
         using (t)
         {
-            t.File(Path.Combine("mod", "dist", "stale.txt"), "old");
+            t.File(Path.Combine("mod", "dist", "Old.esm"), "an earlier build's plugin");
             env.ExecResult = FakeDotnet;
             var code = RunApp(env, out var output, "plugin", sfmod, "--game", game);
             Assert.True(code == ExitCodes.Ok, output);
@@ -96,7 +96,7 @@ public partial class PluginPackTests
             Assert.Equal(Mod(t), wd);
             var expected = $"run -c Release --project {Mod(t, "Builder", "Builder.csproj")} -- {Path.Combine(game, "Data")} {Mod(t, "dist")} 0.1.0 {Mod(t, "Scripts", "Source")} --label \"two words\"";
             Assert.Equal(expected, args);
-            Assert.False(File.Exists(Mod(t, "dist", "stale.txt")));
+            Assert.False(File.Exists(Mod(t, "dist", "Old.esm")));
             Assert.True(File.Exists(Mod(t, "dist", "MyMod.esm")));
             Assert.Contains("RESULT: OK", output);
         }
@@ -362,12 +362,12 @@ public partial class PluginPackTests
         using (t)
         {
             t.File(Path.Combine("original", "Their Mod.esm"), "made-up ready plugin");
-            t.File(Path.Combine("mod", "dist", "stale.txt"), "old");
+            t.File(Path.Combine("mod", "dist", "Old.esm"), "an earlier build's plugin");
             env.Vars["PATH"] = t.Dir("empty-bin");
             var code = RunApp(env, out var output, "plugin", sfmod);
             Assert.True(code == ExitCodes.Ok, output);
             Assert.Empty(env.Execs);
-            Assert.False(File.Exists(Mod(t, "dist", "stale.txt")));
+            Assert.False(File.Exists(Mod(t, "dist", "Old.esm")));
             Assert.Equal("made-up ready plugin", File.ReadAllText(Mod(t, "dist", "MyMod.esm")));
             Assert.Equal("made-up ready plugin", File.ReadAllText(Path.Combine(t.Path, "original", "Their Mod.esm")));
             Assert.Contains("RESULT: OK, MyMod.esm copied into", output);

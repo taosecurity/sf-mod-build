@@ -3,17 +3,21 @@
 // example and ends with the usage text.
 namespace SfModBuild;
 
-/// <summary>What a command accepts: options that take a value, and flags that don't.</summary>
-internal sealed record ArgSpec(IReadOnlyCollection<string> ValueOptions, IReadOnlyCollection<string> Flags, int MaxPositionals = 0);
+/// <summary>What a command accepts: options that take a value, and flags that don't. A value option also in
+/// Repeatable may be given more than once.</summary>
+internal sealed record ArgSpec(IReadOnlyCollection<string> ValueOptions, IReadOnlyCollection<string> Flags, int MaxPositionals = 0, IReadOnlyCollection<string>? Repeatable = null);
 
 /// <summary>The parsed command line of one command.</summary>
 internal sealed class ParsedArgs
 {
     public Dictionary<string, string> Values { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, List<string>> Lists { get; } = new(StringComparer.Ordinal);
     public HashSet<string> Flags { get; } = new(StringComparer.Ordinal);
     public List<string> Positionals { get; } = new();
 
     public string? Get(string option) => Values.TryGetValue(option, out var v) ? v : null;
+    /// <summary>Every value of a repeatable option, in the order given (empty when not given).</summary>
+    public IReadOnlyList<string> GetAll(string option) => Lists.TryGetValue(option, out var v) ? v : Array.Empty<string>();
     public bool Has(string flag) => Flags.Contains(flag);
 }
 
@@ -52,6 +56,12 @@ internal static class Args
                         var empty = inline != null || (i + 1 < a.Length && a[i + 1].Trim().Length == 0);
                         error = $"{name} needs {What(name)} after it{(empty ? " (it was given an empty value)" : "")}, for example: {name} {Example(name)}";
                         return null;
+                    }
+                    if (spec.Repeatable?.Contains(name) == true)
+                    {
+                        if (!p.Lists.TryGetValue(name, out var list)) p.Lists[name] = list = new List<string>();
+                        list.Add(v);
+                        continue;
                     }
                     if (p.Values.ContainsKey(name))
                     {
@@ -110,6 +120,7 @@ internal static class Args
         "--checker" => "the checker program",
         "--my-games" => "the folder that holds StarfieldCustom.ini",
         "--log" => "a log file name",
+        "--masters-dir" => "a folder that holds a master plugin",
         _ => "a value",
     };
 
@@ -120,6 +131,7 @@ internal static class Args
         "--checker" => "\"C:\\Tools\\sf-mod-check.exe\"",
         "--my-games" => "\"C:\\Users\\you\\Documents\\My Games\\Starfield\"",
         "--log" => "sf-mod-build-log.txt",
+        "--masters-dir" => "\"C:\\Modding\\MainMod\"",
         _ => "<value>",
     };
 }

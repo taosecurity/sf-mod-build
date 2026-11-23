@@ -1,4 +1,5 @@
-// sf-mod-build plugin [sfmod.json]: empties dist, then makes the plugin there with the project's builder: a .NET
+// sf-mod-build plugin [sfmod.json]: deletes what earlier builds made in dist (it refuses, deleting nothing, when dist
+// holds anything it didn't make), then makes the plugin there with the project's builder: a .NET
 // project (dotnet run -c Release --project <builder> -- <args>), any command (builder.command, then <args>), or a
 // ready plugin copied in (builder.prebuilt). Placeholders in the arguments are filled in first. Every plugin in parts
 // must be in dist when the builder ends.
@@ -9,7 +10,7 @@ internal static class Plugin
 {
     public const string Usage =
         "usage: sf-mod-build plugin [<sfmod.json or its folder>] [--game <game folder>] [--verbose] [--log <file>]\n" +
-        "  makes the plugin in dist (dist is emptied first) with the mod's builder: a .NET project (dotnet run -c Release),\n" +
+        "  makes the plugin in dist (first deleting what earlier builds made there; it stops if dist holds anything else) with the mod's builder: a .NET project (dotnet run -c Release),\n" +
         "  a command from builder.command, or a ready plugin copied from builder.prebuilt; checks that every plugin in\n" +
         "  parts is there too; then runs steps.afterPlugin";
 
@@ -18,9 +19,22 @@ internal static class Plugin
     /// <summary>The first run restores packages and builds the builder, which can take a while.</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(20);
 
-    /// <summary>Makes the plugin, then runs steps.afterPlugin.</summary>
-    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout) =>
-        Steps.After("afterPlugin", p, env, stdout, "CANNOT BUILD THE PLUGIN", o => Make(p, env, o));
+    /// <summary>Makes the plugin, then runs steps.afterPlugin. What the steps add to dist joins the made list.</summary>
+    public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
+    {
+        string? dist = null;
+        HashSet<string>? before = null;
+        var code = Steps.After("afterPlugin", p, env, stdout, "CANNOT BUILD THE PLUGIN", o =>
+        {
+            var made = Make(p, env, o);
+            dist = Common.LoadProject(p, TextWriter.Null, "")?.Dist;
+            if (dist != null) before = Common.DistEntries(dist);
+            return made;
+        });
+        if (dist != null && before != null && Common.DistEntries(dist) is { } after)
+            Common.RecordMade(dist, after.Where(n => !before.Contains(n)), add: true);
+        return code;
+    }
 
     static int Make(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
@@ -145,11 +159,18 @@ internal static class Plugin
             stdout.WriteLine($"RESULT: CANNOT BUILD THE PLUGIN ({why}). Fix: in {project.File}, set \"dist\" to a folder of its own, for example \"dist\".");
             return ExitCodes.BadInput;
         }
-        if (Common.Empty(project.Dist) is { } emptyError)
+        if (Common.CleanDist(project) is { } cleanError)
         {
-            stdout.WriteLine($"RESULT: CANNOT BUILD THE PLUGIN ({emptyError}).");
+            stdout.WriteLine($"RESULT: CANNOT BUILD THE PLUGIN ({cleanError}).");
             return ExitCodes.BadInput;
         }
+        // dist now holds only zips, so everything else there when the builder ends (even when it fails) is the build's
+        try { return MakeIn(project, exe, args, env, stdout); }
+        finally { Common.RecordMade(project.Dist, Common.DistEntries(project.Dist) ?? new HashSet<string>(), add: false); }
+    }
+
+    static int MakeIn(SfModProject project, string? exe, List<string>? args, IHostEnv env, TextWriter stdout)
+    {
         var plugin = Path.Combine(project.Dist, project.Plugin);
         if (project.BuilderPrebuilt is { } prebuilt)
         {

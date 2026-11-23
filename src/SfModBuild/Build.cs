@@ -6,13 +6,15 @@ namespace SfModBuild;
 internal static class Build
 {
     public const string Usage =
-        "usage: sf-mod-build build [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--require-check] [--verbose] [--log <file>]\n" +
+        "usage: sf-mod-build build [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check] [--verbose] [--log <file>]\n" +
         "  compile, plugin, pack, zip and check in order; stops at the first step that fails";
 
-    public static readonly ArgSpec Spec = new(new[] { "--game", "--checker" }, new[] { "--require-check" }, MaxPositionals: 1);
+    public static readonly ArgSpec Spec = Check.Spec;
 
     public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
+        // a wrong --masters-dir stops the build before it starts, not after the zip is made
+        if (Check.MastersDirs(p, stdout) == null) return ExitCodes.BadInput;
         var steps = new (string Name, Func<ParsedArgs, IHostEnv, TextWriter, int> Run)[]
         {
             ("compile", Compile.Run),

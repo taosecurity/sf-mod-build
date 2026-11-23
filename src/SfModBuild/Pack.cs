@@ -32,9 +32,10 @@ internal static class Pack
 
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
-    /// <summary>Packs, then runs steps.afterPack.</summary>
+    /// <summary>Packs, then runs steps.afterPack. What they add to dist joins the made list.</summary>
     public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout) =>
-        Steps.After("afterPack", p, env, stdout, "CANNOT PACK", o => PackProject(p, env, o));
+        Common.TrackDist(Common.LoadProject(p, TextWriter.Null, "")?.Dist,
+            () => Steps.After("afterPack", p, env, stdout, "CANNOT PACK", o => PackProject(p, env, o)));
 
     static int PackProject(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
