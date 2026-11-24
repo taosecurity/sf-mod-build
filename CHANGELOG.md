@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.2 (2026-11-24)
+
+### What's new
+
+- `build` and `plugin` now show the result of BuildKit's gap check without `--verbose`: its `gap check: RESULT: ...` line, its `ERROR` lines, or `gap check: NOT RUN (...)` when the check couldn't run (sf-mod-check not found). Before, all of it was hidden unless you added `--verbose`. The builder's other lines still need `--verbose` or `--log`.
+- `build` with `"xbox": true` ends by saying that the Creations check runs on the creations-out folder, not on the PC zip, and prints the command: `sf-mod-check release <creations-out> --profile creations`. The README, AGENTS.md and `build --help` say it too.
+- The `dotnet new sfmod` template now pins BuildKit 0.5.0 (it was 0.4.2). The starter mod builds with no code change.
+- New PRIVACY.md: what the tool reads, writes and runs, and that it sends nothing anywhere. The README links it, and the program zip holds it.
+
+### Fixes
+
+- The README and AGENTS.md named version 0.4.0's files (`sf-mod-build.0.4.0.nupkg` and so on). They now name 0.4.2's, and a test fails when either file names a release file or a "was tested" version that isn't the project's version.
+
+### Example
+
+A new `dotnet new sfmod` project, built with sf-mod-check 0.15.2 on PATH (folder names shortened; the lines between are the same as before):
+
+    > sf-mod-build build
+    == compile
+    ...
+    == plugin
+    running the builder: GapMod.Builder.csproj (the first run restores and builds it, which can take a few minutes)
+             gap check: RESULT: OK (0 errors, 0 warnings)
+    built    D:\Mods\GapMod\dist\GapMod.esm (877 bytes)
+    RESULT: OK, GapMod.esm built into D:\Mods\GapMod\dist
+    ...
+    RESULT: OK, built D:\Mods\GapMod\GapMod-0.1.0.zip
+
+Without sf-mod-check on PATH the same line reads `gap check: NOT RUN (sf-mod-check was not found). Get it from ...`.
+
 ## 0.4.1 (2026-11-23)
 
 ### Fixes

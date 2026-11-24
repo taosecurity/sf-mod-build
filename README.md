@@ -69,6 +69,7 @@ and `C:\Tools`):
     RESULT: OK, 1 script(s) compiled into C:\Mods\AssetTest\.build\stage\Scripts
     == plugin
     running the builder: AssetTest.Builder.csproj (the first run restores and builds it, which can take a few minutes)
+             gap check: RESULT: OK (0 errors, 0 warnings)
     built    C:\Mods\AssetTest\dist\AssetTest.esm (810 bytes)
     RESULT: OK, AssetTest.esm built into C:\Mods\AssetTest\dist
     == pack
@@ -94,6 +95,16 @@ and `C:\Tools`):
              sf-mod-check 0.9.1 by Richard Bejtlich - GPL-3.0 - https://github.com/taosecurity/sf-mod-check
     RESULT: OK, AssetTest-0.1.0.zip passed the release check
     RESULT: OK, built C:\Mods\AssetTest\AssetTest-0.1.0.zip
+
+The `gap check:` line comes from BuildKit's own gap check, which the starter's builder runs when sf-mod-check is on
+PATH. `build` always shows its result line (and its ERROR lines, if any). When the check couldn't run, `build` shows
+`gap check: NOT RUN (...)` instead. The rest of the builder's lines (what BuildKit changed, and the full gap check
+output) show with `--verbose`, or in the file you give `--log`.
+
+The Creations check is a separate run, on the `creations-out` folder (made with `"xbox": true`), not on the PC zip:
+`sf-mod-check release creations-out --profile creations`. The `check` step in `build` runs sf-mod-check on the PC
+zip only, so `build` doesn't run the Creations check; with `"xbox": true` it ends by printing that command with your
+creations-out folder in it.
 
 If you still have a copy of the checker from before its rename, called `sfmodcheck.exe`, sf-mod-build finds and runs
 it the same way.
@@ -134,7 +145,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.4.0.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.4.2.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -143,14 +154,14 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.4.0-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.4.0-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
+- **As a program**: download `sf-mod-build-0.4.2-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.4.2-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
   `sha256sum -c SHA256SUMS` in the download folder checks every file, from 0.2.1 on). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.4.0.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.4.2.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -194,9 +205,9 @@ You get these files:
 
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
-  `Taosecurity.Starfield.BuildKit` 0.4.2 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.4.2 is the
-  BuildKit version sf-mod-build 0.4.0 was tested with. The starter plugin it makes is byte for byte the same as
-  with BuildKit 0.4.0, which earlier versions of the template used.
+  `Taosecurity.Starfield.BuildKit` 0.5.0 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.5.0 is the
+  BuildKit version sf-mod-build 0.4.2 was tested with (the starter plugin it makes is unchanged from earlier BuildKit
+  versions).
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
 - One starter script, `Scripts\Source\MYM\StarterQuestScript.psc`, that writes `[MyMod]` lines to the Papyrus log.
@@ -645,3 +656,4 @@ sf-mod-build is made by Richard Bejtlich.
   the copies you installed.
 
 The license is GPL-3.0 (see [LICENSE](LICENSE)), the same as Mutagen and BuildKit. Changes are in [CHANGELOG.md](CHANGELOG.md).
+What the tool reads, writes and runs, and that it sends nothing anywhere, is in [PRIVACY.md](PRIVACY.md).

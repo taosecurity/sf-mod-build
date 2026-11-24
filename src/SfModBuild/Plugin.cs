@@ -179,6 +179,19 @@ internal static class Plugin
         }
     }
 
+    /// <summary>BuildKit's gap check prints its lines through the builder; show its RESULT line, any ERROR lines and a "NOT RUN" line in the
+    /// normal output (the rest stays with --verbose and --log). A builder that runs no gap check prints nothing here.</summary>
+    public static void ShowGapResult(TextWriter stdout, string output)
+    {
+        foreach (var l in Common.LastLines(output, int.MaxValue))
+        {
+            var t = l.Trim();
+            if (t.StartsWith("log: ", StringComparison.Ordinal)) t = t.Substring(5).Trim();
+            if (t.StartsWith("gap check:", StringComparison.Ordinal) && (t.Contains("RESULT") || t.Contains("ERROR") || t.Contains("NOT RUN")))
+                stdout.WriteLine($"         {t}");
+        }
+    }
+
     static int MakeIn(SfModProject project, string? exe, List<string>? args, IHostEnv env, TextWriter stdout)
     {
         var plugin = Path.Combine(project.Dist, project.Plugin);
@@ -215,6 +228,7 @@ internal static class Plugin
         Log.Write($"builder ({project.BuilderKind}): in {project.Folder}: \"{exe}\" {line}");
         var r = env.Exec(exe!, line, project.Folder, Timeout);
         Log.Write($"builder exit code {r.ExitCode}{(r.Why != null ? $" ({r.Why})" : "")}; output:\n{r.Output.TrimEnd()}");
+        ShowGapResult(stdout, r.Output);
         var what = project.BuilderProject != null ? "dotnet" : $"builder.command's program {exe}";
         string? failed = r.Why != null ? $"{what} couldn't be run: {r.Why}"
             : r.ExitCode != 0 ? $"the builder exited with code {r.ExitCode}"

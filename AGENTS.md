@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.4.0. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.4.2. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -25,8 +25,8 @@ background; this file has what to run.
    https://github.com/taosecurity/sf-mod-check/releases (`sf-mod-check.exe`).
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
-5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.4.2]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.4.0 was tested with BuildKit 0.4.2;
+5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.5.0]` and `Mutagen.Bethesda.Starfield`
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.4.2 was tested with BuildKit 0.5.0;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -77,7 +77,11 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - Make a new mod: `dotnet new sfmod -n MyMod --prefix MYM --mod-author "Your Name"` then `cd MyMod`.
 - Check the project file: `sf-mod-build validate`
-- Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`
+- Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`. The plugin step shows BuildKit's gap check
+  result (`gap check: RESULT: OK ...`, its ERROR lines, or `gap check: NOT RUN ...`); the other builder lines need
+  `--verbose`. The `check` step checks the PC zip only. The Creations check runs on the creations-out folder instead
+  (`"xbox": true` makes it): `sf-mod-check release creations-out --profile creations`, which `build` prints at the end
+  but doesn't run.
 - Build with a checker that isn't on PATH: `sf-mod-build build --checker "<path>\sf-mod-check.exe"`
 - Fail the build when no checker is found: `sf-mod-build build --require-check`
 - Check a mod whose master plugin isn't in the Data folder (for example another mod's folder in the mod manager):

@@ -53,7 +53,7 @@ jobs:
       - name: The self-contained Windows program
         run: |
           dotnet publish src/SfModBuild -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/win-x64
-          Copy-Item README.md, AGENTS.md, CHANGELOG.md, LICENSE publish/win-x64/
+          Copy-Item README.md, AGENTS.md, CHANGELOG.md, PRIVACY.md, LICENSE publish/win-x64/
           Compress-Archive -Path publish/win-x64/* -DestinationPath "out/sf-mod-build-$env:VERSION-win-x64.zip"
       - name: The template
         run: |
