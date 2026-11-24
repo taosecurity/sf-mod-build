@@ -33,9 +33,13 @@ internal sealed class FakeHostEnv : IHostEnv
     public Func<string, string, string, ProcessResult> ExecResult { get; set; } = (_, _, _) => new ProcessResult(0, "");
     public List<(string Exe, string Arguments, string WorkingDirectory)> Execs { get; } = new();
 
-    public ProcessResult Exec(string exe, string arguments, string workingDirectory, TimeSpan timeout)
+    /// <summary>The extra variables each Exec call was given (null when none), in call order.</summary>
+    public List<IReadOnlyDictionary<string, string>?> ExecEnvironments { get; } = new();
+
+    public ProcessResult Exec(string exe, string arguments, string workingDirectory, TimeSpan timeout, IReadOnlyDictionary<string, string>? environment = null)
     {
         Execs.Add((exe, arguments, workingDirectory));
+        ExecEnvironments.Add(environment);
         return ExecResult(exe, arguments, workingDirectory);
     }
 }

@@ -20,8 +20,8 @@ internal interface IHostEnv
     string? Run(string exe, string arguments, out string? why);
     /// <summary>Runs a program in a working folder with the arguments exactly as given (one string, so quotes stay
     /// where the program wants them) and returns its exit code and output. Why is set when it couldn't be started or
-    /// didn't finish in time.</summary>
-    ProcessResult Exec(string exe, string arguments, string workingDirectory, TimeSpan timeout);
+    /// didn't finish in time. environment: extra variables for the program (null: none).</summary>
+    ProcessResult Exec(string exe, string arguments, string workingDirectory, TimeSpan timeout, IReadOnlyDictionary<string, string>? environment = null);
 }
 
 /// <summary>What a program run by Exec did: its exit code (-1 when it didn't run or finish), its standard output
@@ -121,7 +121,7 @@ internal sealed class RealHostEnv : IHostEnv
         });
     }
 
-    public ProcessResult Exec(string exe, string arguments, string workingDirectory, TimeSpan timeout)
+    public ProcessResult Exec(string exe, string arguments, string workingDirectory, TimeSpan timeout, IReadOnlyDictionary<string, string>? environment = null)
     {
         try
         {
@@ -140,6 +140,8 @@ internal sealed class RealHostEnv : IHostEnv
             psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
             psi.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
             psi.Environment["UseSharedCompilation"] = "false";
+            if (environment != null)
+                foreach (var (name, value) in environment) psi.Environment[name] = value;
             using var p = Process.Start(psi);
             if (p == null) return new ProcessResult(-1, "", "it did not start");
             var outTask = Drain(p.StandardOutput, out var outText);

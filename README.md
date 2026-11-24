@@ -136,7 +136,8 @@ installs into your own copy of the game.
 - Optional: **sf-mod-check** 0.7.0 or later (0.7.0 added the `release` command that sf-mod-build runs), from
   https://github.com/taosecurity/sf-mod-check/releases. Unzip it and put its folder on PATH, or give the full path
   of `sf-mod-check.exe` with `--checker`. sf-mod-build finds it under its new name `sf-mod-check` or its old name
-  (`sfmodcheck`, before the rename). Without it the build still works, but the zip isn't checked.
+  (`sfmodcheck`, before the rename). Without it the build still works, but the zip isn't checked. A checker given
+  with `build --checker` or `check.checker` is also handed to BuildKit's gap check (as `BUILDKIT_SFMODCHECK`).
 
 ## Install
 

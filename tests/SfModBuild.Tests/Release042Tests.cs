@@ -135,4 +135,37 @@ public partial class ZipCheckBuildTests
             Assert.Contains("gap check: NOT RUN (sf-mod-check was not found)", output);
         }
     }
+
+    // code-review round 2: --checker reaches BuildKit's gap check, not only the check step
+    [Fact]
+    public void BuildGivesTheCheckerToTheGapCheck()
+    {
+        var (t, sfmod, game, env) = Setup(built: false, onPath: "sfmodcheck");
+        using (t)
+        {
+            CompileVanillaZip(game);
+            var checker = t.File("tools/sfmodcheck.exe");
+            env.ExecResult = WithBuilderOutput(GapOk);
+            var code = RunApp(env, out var output, "build", sfmod, "--game", game, "--checker", checker);
+            Assert.True(code == ExitCodes.Ok, output);
+            var i = env.Execs.FindIndex(e => Path.GetFileNameWithoutExtension(e.Exe).ToLowerInvariant() == "dotnet");
+            Assert.True(i >= 0, output);
+            Assert.Equal(Path.GetFullPath(checker), env.ExecEnvironments[i]?[Plugin.GapCheckerVariable]);
+        }
+    }
+
+    // code-review round 2: a gap FAIL the builder doesn't stop on still gets a WARNING
+    [Fact]
+    public void BuildWarnsWhenTheGapCheckFailedButTheBuilderDidNot()
+    {
+        var (t, sfmod, game, env) = Setup(built: false, onPath: "sfmodcheck");
+        using (t)
+        {
+            CompileVanillaZip(game);
+            env.ExecResult = WithBuilderOutput("log:   gap check: ERROR MyMod.esm: something\nlog:   gap check: RESULT: FAIL (1 error, 0 warnings)\n");
+            var code = RunApp(env, out var output, "build", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Contains("WARNING  the gap check found errors", output);
+        }
+    }
 }

@@ -74,8 +74,28 @@ internal static class Plugin
                 return ExitCodes.BadInput;
             }
         }
-        return BuildPlugin(project, game.Folder, exe, env, stdout);
+        return BuildPlugin(project, game.Folder, exe, env, stdout, GapChecker(p, project));
     }
+
+    /// <summary>The checker BuildKit's gap check should use: build's --checker when it names a file, else check.checker
+    /// in sfmod.json; null leaves BuildKit to its own search (BUILDKIT_SFMODCHECK, then PATH). A wrong --checker is
+    /// reported by the check step.</summary>
+    public static string? GapChecker(ParsedArgs p, SfModProject project)
+    {
+        if (p.Get("--checker") is { } given)
+        {
+            try
+            {
+                var full = Path.GetFullPath(given.Trim().Trim('"'));
+                if (File.Exists(full)) return full;
+            }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { }
+        }
+        return project.Checker;
+    }
+
+    /// <summary>The name of the variable BuildKit reads for the sf-mod-check path.</summary>
+    public const string GapCheckerVariable = "BUILDKIT_SFMODCHECK";
 
     /// <summary>The placeholder values: full paths without a trailing separator, and the version.</summary>
     public static Dictionary<string, string> Values(SfModProject project, string? gameFolder)
@@ -147,7 +167,7 @@ internal static class Plugin
 
     /// <summary>Empties dist and makes the plugin there. gameFolder and exe (dotnet, or builder.command's program)
     /// are null only for a prebuilt plugin.</summary>
-    public static int BuildPlugin(SfModProject project, string? gameFolder, string? exe, IHostEnv env, TextWriter stdout)
+    public static int BuildPlugin(SfModProject project, string? gameFolder, string? exe, IHostEnv env, TextWriter stdout, string? gapChecker = null)
     {
         List<string>? args = null;
         if (project.BuilderPrebuilt == null)
@@ -171,7 +191,7 @@ internal static class Plugin
         }
         // dist now holds only zips (and the zip folder), so everything else there when the builder ends (even when it
         // fails) is the build's; the zip folder never joins the list, so its zips can't be deleted later
-        try { return MakeIn(project, exe, args, env, stdout); }
+        try { return MakeIn(project, exe, args, env, stdout, gapChecker); }
         finally
         {
             Common.RecordMade(project.Dist, (Common.DistEntries(project.Dist) ?? new HashSet<string>())
@@ -183,8 +203,15 @@ internal static class Plugin
     /// normal output (the rest stays with --verbose and --log). A builder that runs no gap check prints nothing here.</summary>
     public static void ShowGapResult(TextWriter stdout, string output)
     {
+        var failed = false;
         foreach (var l in Common.LastLines(output, int.MaxValue))
-            if (GapLine(l) is { } t) stdout.WriteLine($"         {t}");
+            if (GapLine(l) is { } t)
+            {
+                stdout.WriteLine($"         {t}");
+                if (t.Substring("gap check:".Length).TrimStart().StartsWith("RESULT: FAIL", StringComparison.Ordinal)) failed = true;
+            }
+        // a builder that sets FailOnGapErrors = false still exits 0, so the step's RESULT: OK must not hide the failure
+        if (failed) stdout.WriteLine("WARNING  the gap check found errors (the ERROR lines above). Fix them before you release the mod.");
     }
 
     /// <summary>The line as shown, when it is a gap check RESULT, ERROR or NOT RUN line (with or without a "log: "
@@ -200,7 +227,7 @@ internal static class Plugin
             || rest.StartsWith("NOT RUN", StringComparison.Ordinal) ? t : null;
     }
 
-    static int MakeIn(SfModProject project, string? exe, List<string>? args, IHostEnv env, TextWriter stdout)
+    static int MakeIn(SfModProject project, string? exe, List<string>? args, IHostEnv env, TextWriter stdout, string? gapChecker)
     {
         var plugin = Path.Combine(project.Dist, project.Plugin);
         if (project.BuilderPrebuilt is { } prebuilt)
@@ -234,7 +261,13 @@ internal static class Plugin
         }
         stdout.WriteLine($"running the builder: {label}");
         Log.Write($"builder ({project.BuilderKind}): in {project.Folder}: \"{exe}\" {line}");
-        var r = env.Exec(exe!, line, project.Folder, Timeout);
+        Dictionary<string, string>? vars = null;
+        if (gapChecker != null)
+        {
+            vars = new() { [GapCheckerVariable] = gapChecker };
+            Log.Write($"builder: {GapCheckerVariable}={gapChecker} (for BuildKit's gap check)");
+        }
+        var r = env.Exec(exe!, line, project.Folder, Timeout, vars);
         Log.Write($"builder exit code {r.ExitCode}{(r.Why != null ? $" ({r.Why})" : "")}; output:\n{r.Output.TrimEnd()}");
         ShowGapResult(stdout, r.Output);
         var what = project.BuilderProject != null ? "dotnet" : $"builder.command's program {exe}";
