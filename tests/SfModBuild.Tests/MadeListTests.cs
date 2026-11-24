@@ -74,6 +74,7 @@ public partial class PluginPackTests
     [Fact]
     public void PackWithXboxKeepsCreationsOutsListWhenADeleteFails()
     {
+        if (!OperatingSystem.IsWindows()) return; // an open file blocks its delete only on Windows
         var (t, sfmod, game, env) = Setup(Json.Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"xbox\": true,"));
         using (t)
         {
