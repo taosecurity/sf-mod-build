@@ -5,7 +5,7 @@
 ### What's new
 
 - `build` and `plugin` now show the result of BuildKit's gap check without `--verbose`: its `gap check: RESULT: ...` line, its `ERROR` lines, or `gap check: NOT RUN (...)` when the check couldn't run (sf-mod-check not found). Before, all of it was hidden unless you added `--verbose`. The builder's other lines still need `--verbose` or `--log`. When the gap check finds errors but the builder still succeeds (a builder that sets `FailOnGapErrors = false`), a WARNING line says so.
-- `build --checker <exe>` (or `check.checker` in sfmod.json) now also gives that checker to BuildKit's gap check, through the `BUILDKIT_SFMODCHECK` variable. Before, the gap check looked only on PATH, so it said NOT RUN even though you had named the checker.
+- `build --checker <exe>` (or `check.checker` in sfmod.json) now also gives that checker to BuildKit's gap check, through the `BUILDKIT_SFMODCHECK` variable, when its `--version` says 0.15.0 or later (the first with the `gap` command; an older one gets a `note:` line and is left out). Before, the gap check looked only on PATH, so it said NOT RUN even though you had named the checker.
 - `build` with `"xbox": true` ends by saying that the Creations check runs on the creations-out folder, not on the PC zip, and prints the command: `sf-mod-check release <creations-out> --profile creations`. The README, AGENTS.md and `build --help` say it too.
 - The `dotnet new sfmod` template now pins BuildKit 0.5.0 (it was 0.4.2). The starter mod builds with no code change.
 - New PRIVACY.md: what the tool reads, writes and runs, and that it sends nothing anywhere. The README links it, and the program zip holds it.

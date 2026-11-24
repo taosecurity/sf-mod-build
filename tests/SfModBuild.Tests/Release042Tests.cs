@@ -168,4 +168,40 @@ public partial class ZipCheckBuildTests
             Assert.Contains("WARNING  the gap check found errors", output);
         }
     }
+
+    // code-review round 3: a checker older than 0.15.0 (no gap command) isn't handed to BuildKit's gap check
+    [Fact]
+    public void BuildKeepsAnOldCheckerAwayFromTheGapCheck()
+    {
+        var (t, sfmod, game, env) = Setup(built: false, onPath: "sfmodcheck");
+        using (t)
+        {
+            CompileVanillaZip(game);
+            var checker = t.File("tools/sfmodcheck.exe");
+            var old = env.RunResult;
+            env.RunResult = (exe, args) => args == "--version" ? "sfmodcheck 0.10.0 by Richard Bejtlich - GPL-3.0\n" : old(exe, args);
+            env.ExecResult = WithBuilderOutput(GapOk);
+            var code = RunApp(env, out var output, "build", sfmod, "--game", game, "--checker", checker);
+            Assert.True(code == ExitCodes.Ok, output);
+            var i = env.Execs.FindIndex(e => Path.GetFileNameWithoutExtension(e.Exe).ToLowerInvariant() == "dotnet");
+            Assert.True(i >= 0, output);
+            Assert.Null(env.ExecEnvironments[i]);
+            Assert.Contains("note: sfmodcheck.exe doesn't look like sf-mod-check 0.15.0 or later", output);
+        }
+    }
+
+    // code-review round 3: no "builder still succeeded" WARNING when the builder failed
+    [Fact]
+    public void BuildDoesNotWarnWhenTheBuilderFailedOnTheGapCheck()
+    {
+        var (t, sfmod, game, env) = Setup(built: false, onPath: "sfmodcheck");
+        using (t)
+        {
+            CompileVanillaZip(game);
+            env.ExecResult = WithBuilderOutput("log:   gap check: ERROR MyMod.esm: something\nlog:   gap check: RESULT: FAIL (1 error, 0 warnings)\n", dotnetExit: 1);
+            var code = RunApp(env, out var output, "build", sfmod, "--game", game);
+            Assert.Equal(ExitCodes.Failed, code);
+            Assert.DoesNotContain("WARNING  the gap check found errors", output);
+        }
+    }
 }

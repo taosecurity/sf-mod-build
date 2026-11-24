@@ -96,8 +96,8 @@ and `C:\Tools`):
     RESULT: OK, AssetTest-0.1.0.zip passed the release check
     RESULT: OK, built C:\Mods\AssetTest\AssetTest-0.1.0.zip
 
-The `gap check:` line comes from BuildKit's own gap check, which the starter's builder runs when sf-mod-check is on
-PATH. `build` always shows its result line (and its ERROR lines, if any). When the check couldn't run, `build` shows
+The `gap check:` line comes from BuildKit's own gap check, which the starter's builder runs when it finds sf-mod-check
+(the checker given with `--checker` or `check.checker`, else `BUILDKIT_SFMODCHECK`, else PATH). `build` always shows its result line (and its ERROR lines, if any). When the check couldn't run, `build` shows
 `gap check: NOT RUN (...)` instead. The rest of the builder's lines (what BuildKit changed, and the full gap check
 output) show with `--verbose`, or in the file you give `--log`.
 
@@ -137,7 +137,9 @@ installs into your own copy of the game.
   https://github.com/taosecurity/sf-mod-check/releases. Unzip it and put its folder on PATH, or give the full path
   of `sf-mod-check.exe` with `--checker`. sf-mod-build finds it under its new name `sf-mod-check` or its old name
   (`sfmodcheck`, before the rename). Without it the build still works, but the zip isn't checked. A checker given
-  with `build --checker` or `check.checker` is also handed to BuildKit's gap check (as `BUILDKIT_SFMODCHECK`).
+  with `build --checker` or `check.checker` is also handed to BuildKit's gap check (as `BUILDKIT_SFMODCHECK`, in
+  place of any value you set yourself) when it is sf-mod-check 0.15.0 or later, the first with the `gap` command; an
+  older one gets a `note:` line, and the gap check looks for sf-mod-check itself.
 
 ## Install
 

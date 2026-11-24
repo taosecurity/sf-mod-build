@@ -74,25 +74,38 @@ internal static class Plugin
                 return ExitCodes.BadInput;
             }
         }
-        return BuildPlugin(project, game.Folder, exe, env, stdout, GapChecker(p, project));
+        return BuildPlugin(project, game.Folder, exe, env, stdout, GapChecker(p, project, env, stdout));
     }
 
     /// <summary>The checker BuildKit's gap check should use: build's --checker when it names a file, else check.checker
-    /// in sfmod.json; null leaves BuildKit to its own search (BUILDKIT_SFMODCHECK, then PATH). A wrong --checker is
-    /// reported by the check step.</summary>
-    public static string? GapChecker(ParsedArgs p, SfModProject project)
+    /// in sfmod.json, when its --version says 0.15.0 or later (the first with the gap command); null leaves BuildKit
+    /// to its own search (BUILDKIT_SFMODCHECK, then PATH). A wrong --checker is reported by the check step.</summary>
+    public static string? GapChecker(ParsedArgs p, SfModProject project, IHostEnv env, TextWriter stdout)
     {
+        string? chosen = null;
         if (p.Get("--checker") is { } given)
         {
             try
             {
                 var full = Path.GetFullPath(given.Trim().Trim('"'));
-                if (File.Exists(full)) return full;
+                if (File.Exists(full)) chosen = full;
             }
             catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { }
         }
-        return project.Checker;
+        chosen ??= project.Checker;
+        if (chosen == null) return null;
+        var output = env.Run(chosen, "--version", out var why);
+        var m = output == null ? null : System.Text.RegularExpressions.Regex.Match(output, @"(\d+)\.(\d+)\.(\d+)");
+        if (m is { Success: true } && new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value)) >= MinGapChecker)
+            return chosen;
+        var said = output == null ? $"its --version failed: {why}" : $"its --version said \"{output.Trim()}\"";
+        Log.Write($"builder: not giving {chosen} to BuildKit's gap check ({said})");
+        stdout.WriteLine($"note: {Path.GetFileName(chosen)} doesn't look like sf-mod-check {MinGapChecker} or later (the first with the gap command), so BuildKit's gap check looks for sf-mod-check itself (BUILDKIT_SFMODCHECK, then PATH).");
+        return null;
     }
+
+    /// <summary>The first sf-mod-check with the gap command.</summary>
+    static readonly Version MinGapChecker = new(0, 15, 0);
 
     /// <summary>The name of the variable BuildKit reads for the sf-mod-check path.</summary>
     public const string GapCheckerVariable = "BUILDKIT_SFMODCHECK";
@@ -201,7 +214,7 @@ internal static class Plugin
 
     /// <summary>BuildKit's gap check prints its lines through the builder; show its RESULT line, any ERROR lines and a "NOT RUN" line in the
     /// normal output (the rest stays with --verbose and --log). A builder that runs no gap check prints nothing here.</summary>
-    public static void ShowGapResult(TextWriter stdout, string output)
+    public static void ShowGapResult(TextWriter stdout, string output, bool builderSucceeded = true)
     {
         var failed = false;
         foreach (var l in Common.LastLines(output, int.MaxValue))
@@ -211,7 +224,7 @@ internal static class Plugin
                 if (t.Substring("gap check:".Length).TrimStart().StartsWith("RESULT: FAIL", StringComparison.Ordinal)) failed = true;
             }
         // a builder that sets FailOnGapErrors = false still exits 0, so the step's RESULT: OK must not hide the failure
-        if (failed) stdout.WriteLine("WARNING  the gap check found errors (the ERROR lines above). Fix them before you release the mod.");
+        if (failed && builderSucceeded) stdout.WriteLine("WARNING  the gap check found errors (the ERROR lines above). Fix them before you release the mod.");
     }
 
     /// <summary>The line as shown, when it is a gap check RESULT, ERROR or NOT RUN line (with or without a "log: "
@@ -269,7 +282,7 @@ internal static class Plugin
         }
         var r = env.Exec(exe!, line, project.Folder, Timeout, vars);
         Log.Write($"builder exit code {r.ExitCode}{(r.Why != null ? $" ({r.Why})" : "")}; output:\n{r.Output.TrimEnd()}");
-        ShowGapResult(stdout, r.Output);
+        ShowGapResult(stdout, r.Output, r.Why == null && r.ExitCode == 0);
         var what = project.BuilderProject != null ? "dotnet" : $"builder.command's program {exe}";
         string? failed = r.Why != null ? $"{what} couldn't be run: {r.Why}"
             : r.ExitCode != 0 ? $"the builder exited with code {r.ExitCode}"
