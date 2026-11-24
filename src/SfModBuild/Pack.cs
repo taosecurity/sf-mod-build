@@ -104,7 +104,7 @@ internal static class Pack
         return line + " -q";
     }
 
-    /// <summary>Why emptying creations-out would be unsafe, or null.</summary>
+    /// <summary>Why deleting files in creations-out would be unsafe, or null.</summary>
     public static string? UnsafeCreationsOut(SfModProject project, IEnumerable<string> gameFolders) =>
         Common.UnsafeToEmpty("creations-out", project.CreationsOut, project.Folder, Keep(project), gameFolders);
 

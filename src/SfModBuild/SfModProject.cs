@@ -333,12 +333,13 @@ internal sealed class SfModProject
             var xbox = Bool(root, "xbox", false);
             var creationsOut = Folder(root, "creationsOut", "creations-out");
             if (creationsOut != null && SamePath(creationsOut, folder))
-                Error("creationsOut", "it is the mod's own folder, which pack empties when xbox is on.", "use a folder of its own, for example \"creations-out\".");
+                Error("creationsOut", "it is the mod's own folder, where pack deletes the files earlier builds made when xbox is on.","use a folder of its own, for example \"creations-out\".");
             var parts = Parts(root, plugin, scripts, xbox, builder?.Prebuilt != null);
-            // The tool empties these three before writing, so they must be folders of their own inside the mod's folder.
+            // The tool empties stage and deletes its own earlier files in dist and creations-out before writing, so
+            // these three must be folders of their own inside the mod's folder.
             foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
                 if (path != null && !SamePath(path, folder) && !IsUnder(path, folder))
-                    Error(field, $"{path} isn't inside the mod's folder {folder}, and every build empties it.",
+                    Error(field, $"{path} isn't inside the mod's folder {folder}, and every build {(field == "stage" ? "empties it" : "deletes the files earlier builds made there")}.",
                         $"give a folder inside the mod's folder, relative to sfmod.json, for example \"{(field == "stage" ? ".build/stage" : field == "dist" ? "dist" : "creations-out")}\".");
             // a builder file inside a folder the tool empties would be deleted before it is used
             var programs = new List<(string Field, string? File)>();

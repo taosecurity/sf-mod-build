@@ -352,6 +352,9 @@ public class CompileTests
                 var problems = new List<ProjectProblem>();
                 Assert.Null(SfModProject.Load(sfmod, problems));
                 Assert.Contains(problems, x => x.Field == field && x.Problem.Contains("isn't inside the mod's folder"));
+                // only stage is emptied; dist and creations-out lose only the files earlier builds made (0.4.1)
+                if (field == "stage") Assert.Contains(problems, x => x.Field == field && x.Problem.Contains("empties it"));
+                else Assert.Contains(problems, x => x.Field == field && x.Problem.Contains("deletes the files earlier builds made") && !x.Problem.Contains("empties"));
             }
         }
     }
@@ -395,6 +398,7 @@ public class CompileTests
             Assert.Null(SfModProject.Load(sfmod, problems));
             Assert.Contains(problems, x => x.Field == "creationsOut" && x.Problem.Contains("mod's own folder"));
             Assert.DoesNotContain(problems, x => x.Problem.Contains("isn't inside"));
+            Assert.DoesNotContain(problems, x => x.Field == "creationsOut" && x.Problem.Contains("empties"));
         }
     }
 

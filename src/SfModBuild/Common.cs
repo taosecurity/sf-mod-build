@@ -171,7 +171,7 @@ internal static class Common
 
     /// <summary>The plugin and archive names sfmod.json gives the mod (matched without case): the plugin and each
     /// part, every archive pack makes or made for them (Main and Textures, PC and Xbox, each part's, the archives
-    /// list) and the names zip.archives lists. Only these, the made list's names and half-written zips are deleted
+    /// list) and the names zip.archives lists. Only these and the made list's names (and, in dist only, half-written zips) are deleted
     /// from dist and creations-out; any other plugin or archive there is the user's.</summary>
     public static HashSet<string> OwnNames(SfModProject project)
     {
