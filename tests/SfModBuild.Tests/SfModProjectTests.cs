@@ -538,7 +538,7 @@ public partial class SfModProjectTests
     [InlineData("\"prebuilt\": \"Original/MyMod.esm\", \"args\": [\"{dist}\"]", "builder.args", "copied, not run")]
     [InlineData("\"prebuilt\": \"Original/Nope.esm\"", "builder.prebuilt", "isn't there")]
     [InlineData("\"prebuilt\": \"README.md\"", "builder.prebuilt", "doesn't end in .esm")]
-    [InlineData("\"prebuilt\": \"dist/Old.esm\"", "builder.prebuilt", "which the build empties")]
+    [InlineData("\"prebuilt\": \"dist/Old.esm\"", "builder.prebuilt", "where the build deletes and replaces the files it made earlier")]
     public void BadBuilderKindsAreProblems(string builder, string field, string words)
     {
         using var t = Mod();

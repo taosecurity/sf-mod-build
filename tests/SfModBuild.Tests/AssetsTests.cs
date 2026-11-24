@@ -146,7 +146,7 @@ public class AssetsTests
 
     [Theory]
     [InlineData(".", "the mod's own folder")]
-    [InlineData("dist", "which the build empties")]
+    [InlineData("dist", "where the build deletes and replaces the files it made earlier")]
     [InlineData(".build", "which the build empties")]
     [InlineData("Scripts", "a script source folder")]
     [InlineData("NoSuchFolder", "isn't there")]

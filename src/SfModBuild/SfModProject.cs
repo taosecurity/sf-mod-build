@@ -341,7 +341,7 @@ internal sealed class SfModProject
                 if (path != null && !SamePath(path, folder) && !IsUnder(path, folder))
                     Error(field, $"{path} isn't inside the mod's folder {folder}, and every build {(field == "stage" ? "empties it" : "deletes the files earlier builds made there")}.",
                         $"give a folder inside the mod's folder, relative to sfmod.json, for example \"{(field == "stage" ? ".build/stage" : field == "dist" ? "dist" : "creations-out")}\".");
-            // a builder file inside a folder the tool empties would be deleted before it is used
+            // a builder file inside an output folder could be deleted or refused before it is used
             var programs = new List<(string Field, string? File)>();
             if (builder != null)
                 programs.AddRange(new[] { ("builder.command[0]", builder.Command is { } c && Path.IsPathRooted(c[0]) ? c[0] : null), ("builder.prebuilt", builder.Prebuilt) });
@@ -353,7 +353,7 @@ internal sealed class SfModProject
                 if (bFile != null)
                     foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
                         if (path != null && IsUnder(bFile, path))
-                            Error(bField, $"{bFile} is inside {field} ({path}), which the build empties before it is used.",
+                            Error(bField, $"{bFile} is inside {field} ({path}), {Clears(field)}.",
                                 "keep it in a folder of its own, outside dist, stage and creations-out.");
             var assetsOk = true;
             AssetsSection? assets = null;
@@ -554,7 +554,7 @@ internal sealed class SfModProject
                     foreach (var (field, path) in new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) })
                         if (source != null && path != null && (SamePath(source, path) || IsUnder(source, path) || IsUnder(path, source)))
                         {
-                            Error(at + ".source", $"{source} is, holds or is inside {field} ({path}), which the build empties.", "keep the archive's files in a folder of their own, for example \"Voices\".");
+                            Error(at + ".source", $"{source} is, holds or is inside {field} ({path}), {Clears(field)}.", "keep the archive's files in a folder of their own, for example \"Voices\".");
                             source = null;
                         }
                     foreach (var (field, path) in packed)
@@ -587,7 +587,7 @@ internal sealed class SfModProject
                         else if (NamesFolder(value) || !System.IO.File.Exists(full))
                             Error(at + ".file", Directory.Exists(full) ? $"{full} is a folder, not an archive." : $"{full} isn't there.", "give the ready archive file, relative to sfmod.json.");
                         else if (new[] { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) }.FirstOrDefault(x => x.Item2 != null && IsUnder(full, x.Item2)) is { Item1: { } field, Item2: { } path })
-                            Error(at + ".file", $"{full} is inside {field} ({path}), which the build clears before it is copied.", "keep the ready archive in a folder of its own, outside dist, stage and creations-out.");
+                            Error(at + ".file", $"{full} is inside {field} ({path}), {Clears(field)}.", "keep the ready archive in a folder of its own, outside dist, stage and creations-out.");
                         else file = full;
                     }
                 }
@@ -732,7 +732,7 @@ internal sealed class SfModProject
             foreach (var (outName, outPath) in outputs)
                 if (SamePath(full, outPath) || IsUnder(full, outPath) || IsUnder(outPath, full))
                 {
-                    Error(field, $"{full} is, holds or is inside {outName} ({outPath}), which the build empties.", $"keep the loose files in a folder of their own, for example \"{example}\".");
+                    Error(field, $"{full} is, holds or is inside {outName} ({outPath}), {Clears(outName)}.", $"keep the loose files in a folder of their own, for example \"{example}\".");
                     return null;
                 }
             foreach (var (what, path) in mustNotHold)
@@ -1382,6 +1382,10 @@ internal sealed class SfModProject
             }
             return ok;
         }
+
+        /// <summary>What the build does to an output folder, for messages: stage is emptied, while dist and
+        /// creations-out only have the files earlier builds made there replaced.</summary>
+        static string Clears(string field) => field == "stage" ? "which the build empties" : "where the build deletes and replaces the files it made earlier";
 
         /// <summary>True when <paramref name="inner"/> is inside <paramref name="outer"/> (not the same folder).</summary>
         bool IsUnder(string inner, string outer)
