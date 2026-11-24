@@ -96,7 +96,7 @@ internal static class Plugin
         if (chosen == null) return null;
         var output = env.Run(chosen, "--version", out var why);
         var m = output == null ? null : System.Text.RegularExpressions.Regex.Match(output, @"(\d+)\.(\d+)\.(\d+)");
-        if (m is { Success: true } && new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value)) >= MinGapChecker)
+        if (m is { Success: true } && Version.TryParse(m.Value, out var version) && version >= MinGapChecker)
             return chosen;
         var said = output == null ? $"its --version failed: {why}" : $"its --version said \"{output.Trim()}\"";
         Log.Write($"builder: not giving {chosen} to BuildKit's gap check ({said})");

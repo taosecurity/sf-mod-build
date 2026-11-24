@@ -37,7 +37,9 @@ sf-mod-build runs on your own computer. It collects no data and sends nothing an
 
 It starts the programs your project names, and nothing else: the Creation Kit's Papyrus compiler and Archive2, `dotnet`
 (for the `builder.project` builder), your `builder.command` program, the commands in `steps`, and `sf-mod-check` for the
-last step. They run on your computer with your account's rights. What they do is covered by their own documents:
+last step. When you name a checker (`--checker` or `check.checker`), the plugin step also runs it once with `--version`
+and, if it is 0.15.0 or later, gives its path to the builder (as `BUILDKIT_SFMODCHECK`), so BuildKit's gap check runs
+`sf-mod-check gap` inside the builder. They run on your computer with your account's rights. What they do is covered by their own documents:
 `dotnet` restores the builder's nuget packages (BuildKit and Mutagen in the starter project) from nuget.org on the
 first build, which is a download from nuget.org and not something sf-mod-build sends. A builder or a step you write
 yourself can do anything its code does, so read it before you run it.

@@ -41,11 +41,11 @@ public partial class ZipCheckBuildTests
         using (t)
         {
             CompileVanillaZip(game);
-            env.ExecResult = WithBuilderOutput("log:   gap check: ERROR [quest-stage] MYM_Quest: stage 20 missing\nlog:   gap check: RESULT: FAILED (1 errors, 0 warnings)\n", dotnetExit: 1);
+            env.ExecResult = WithBuilderOutput("log:   gap check: ERROR [quest-stage] MYM_Quest: stage 20 missing\nlog:   gap check: RESULT: FAIL (1 error, 0 warnings)\n", dotnetExit: 1);
             var code = RunApp(env, out var output, "build", sfmod, "--game", game);
             Assert.Equal(ExitCodes.Failed, code);
             Assert.Contains("gap check: ERROR [quest-stage] MYM_Quest: stage 20 missing", output);
-            Assert.Contains("gap check: RESULT: FAILED (1 errors, 0 warnings)", output);
+            Assert.Contains("gap check: RESULT: FAIL (1 error, 0 warnings)", output);
             // shown once, not again in the builder's last lines
             Assert.Single(Regex.Matches(output, Regex.Escape("stage 20 missing")));
         }
@@ -170,8 +170,11 @@ public partial class ZipCheckBuildTests
     }
 
     // code-review round 3: a checker older than 0.15.0 (no gap command) isn't handed to BuildKit's gap check
-    [Fact]
-    public void BuildKeepsAnOldCheckerAwayFromTheGapCheck()
+    // code-review round 4: a version number too big for an int gives the note, not a crash
+    [Theory]
+    [InlineData("sfmodcheck 0.10.0 by Richard Bejtlich - GPL-3.0\n")]
+    [InlineData("build 12345678901.2.3\n")]
+    public void BuildKeepsAnOldCheckerAwayFromTheGapCheck(string versionOutput)
     {
         var (t, sfmod, game, env) = Setup(built: false, onPath: "sfmodcheck");
         using (t)
@@ -179,7 +182,7 @@ public partial class ZipCheckBuildTests
             CompileVanillaZip(game);
             var checker = t.File("tools/sfmodcheck.exe");
             var old = env.RunResult;
-            env.RunResult = (exe, args) => args == "--version" ? "sfmodcheck 0.10.0 by Richard Bejtlich - GPL-3.0\n" : old(exe, args);
+            env.RunResult = (exe, args) => args == "--version" ? versionOutput : old(exe, args);
             env.ExecResult = WithBuilderOutput(GapOk);
             var code = RunApp(env, out var output, "build", sfmod, "--game", game, "--checker", checker);
             Assert.True(code == ExitCodes.Ok, output);
