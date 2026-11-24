@@ -63,7 +63,8 @@ internal static class Common
 
     /// <summary>Why emptying <paramref name="folder"/> would be unsafe, or null when it is safe. Unsafe: a drive root,
     /// a folder that is or holds one of <paramref name="keep"/>, or a folder that is, holds or is inside one of
-    /// <paramref name="never"/> (the game's folder: emptying any part of it would delete game files).</summary>
+    /// <paramref name="never"/> (the game's folder: deleting in any part of it would delete game files). Stage is
+    /// emptied; dist and creations-out lose only the build's own files, so the messages say "could delete".</summary>
     public static string? UnsafeToEmpty(string what, string folder, string modFolder, IEnumerable<string> keep, IEnumerable<string>? never = null)
     {
         var f = Full(folder);
@@ -78,10 +79,10 @@ internal static class Common
             return $"the {what} folder {f} {link}";
         foreach (var k in keep.Select(Full))
             if (Same(k, f) || Under(k, f))
-                return $"the {what} folder {f} is or holds {k}, which emptying it would delete";
+                return $"the {what} folder {f} is or holds {k}, which the build could delete there";
         foreach (var n in (never ?? Array.Empty<string>()).Select(Full))
             if (Same(n, f) || Under(n, f) || Under(f, n))
-                return $"the {what} folder {f} is inside or holds the game's folder {n}, and emptying it would delete game files";
+                return $"the {what} folder {f} is inside or holds the game's folder {n}, so the build could delete game files there";
         return null;
     }
 

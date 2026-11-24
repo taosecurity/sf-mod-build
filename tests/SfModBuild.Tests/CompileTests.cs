@@ -370,6 +370,20 @@ public class CompileTests
     }
 
     [Fact]
+    public void UnsafeToEmptyMessagesDontSayCreationsOutIsEmptied()
+    {
+        // 0.4.1: pack deletes only its own files in dist and creations-out, so the refusals mustn't say "emptying"
+        var mod = Path.Combine(Path.GetTempPath(), "m", "mod");
+        var co = Path.Combine(mod, "creations-out");
+        var keep = Common.UnsafeToEmpty("creations-out", co, mod, new[] { Path.Combine(co, "builder") });
+        var game = Common.UnsafeToEmpty("creations-out", co, mod, Array.Empty<string>(), new[] { mod });
+        Assert.Contains("could delete", keep);
+        Assert.Contains("could delete game files", game);
+        Assert.DoesNotContain("emptying", keep);
+        Assert.DoesNotContain("emptying", game);
+    }
+
+    [Fact]
     public void ModAtADriveRootKeepsItsOutputFolders()
     {
         // the loader's IsUnder must handle "E:\" (or "/"), which keeps its separator
