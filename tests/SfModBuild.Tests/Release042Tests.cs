@@ -46,6 +46,25 @@ public partial class ZipCheckBuildTests
             Assert.Equal(ExitCodes.Failed, code);
             Assert.Contains("gap check: ERROR [quest-stage] MYM_Quest: stage 20 missing", output);
             Assert.Contains("gap check: RESULT: FAILED (1 errors, 0 warnings)", output);
+            // shown once, not again in the builder's last lines
+            Assert.Single(Regex.Matches(output, Regex.Escape("stage 20 missing")));
+        }
+    }
+
+    // BuildKit 0.5.0's own format: "  gap check: ..." with no "log:" prefix, stderr merged after stdout
+    [Fact]
+    public void BuildShowsTheGapResultInBuildKitsOwnFormat()
+    {
+        var (t, sfmod, game, env) = Setup(built: false, onPath: "sfmodcheck");
+        using (t)
+        {
+            CompileVanillaZip(game);
+            env.ExecResult = WithBuilderOutput("  gap check: running C:/RESULT/ERROR/sf-mod-check.exe gap\n  gap check:   WARNING [x] MYM_ERRORHandler unused\n  gap check: RESULT: OK (0 errors, 1 warnings)\n");
+            var code = RunApp(env, out var output, "build", sfmod, "--game", game);
+            Assert.True(code == ExitCodes.Ok, output);
+            Assert.Contains("gap check: RESULT: OK (0 errors, 1 warnings)", output);
+            Assert.DoesNotContain("MYM_ERRORHandler", output);
+            Assert.DoesNotContain("C:/RESULT/ERROR", output);
         }
     }
 

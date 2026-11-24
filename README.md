@@ -102,7 +102,7 @@ PATH. `build` always shows its result line (and its ERROR lines, if any). When t
 output) show with `--verbose`, or in the file you give `--log`.
 
 The Creations check is a separate run, on the `creations-out` folder (made with `"xbox": true`), not on the PC zip:
-`sf-mod-check release creations-out --profile creations`. The `check` step in `build` runs sf-mod-check on the PC
+`sf-mod-check release creations-out --profile creations` (if `sfmod.json` sets `"creationsOut"`, use that folder instead). The `check` step in `build` runs sf-mod-check on the PC
 zip only, so `build` doesn't run the Creations check; with `"xbox": true` it ends by printing that command with your
 creations-out folder in it.
 

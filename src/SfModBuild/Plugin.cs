@@ -184,12 +184,20 @@ internal static class Plugin
     public static void ShowGapResult(TextWriter stdout, string output)
     {
         foreach (var l in Common.LastLines(output, int.MaxValue))
-        {
-            var t = l.Trim();
-            if (t.StartsWith("log: ", StringComparison.Ordinal)) t = t.Substring(5).Trim();
-            if (t.StartsWith("gap check:", StringComparison.Ordinal) && (t.Contains("RESULT") || t.Contains("ERROR") || t.Contains("NOT RUN")))
-                stdout.WriteLine($"         {t}");
-        }
+            if (GapLine(l) is { } t) stdout.WriteLine($"         {t}");
+    }
+
+    /// <summary>The line as shown, when it is a gap check RESULT, ERROR or NOT RUN line (with or without a "log: "
+    /// prefix); null for any other line.</summary>
+    public static string? GapLine(string line)
+    {
+        var t = line.Trim();
+        if (t.StartsWith("log: ", StringComparison.Ordinal)) t = t.Substring(5).Trim();
+        const string prefix = "gap check:";
+        if (!t.StartsWith(prefix, StringComparison.Ordinal)) return null;
+        var rest = t.Substring(prefix.Length).TrimStart();
+        return rest.StartsWith("RESULT", StringComparison.Ordinal) || rest.StartsWith("ERROR", StringComparison.Ordinal)
+            || rest.StartsWith("NOT RUN", StringComparison.Ordinal) ? t : null;
     }
 
     static int MakeIn(SfModProject project, string? exe, List<string>? args, IHostEnv env, TextWriter stdout)
@@ -237,7 +245,9 @@ internal static class Plugin
         if (failed != null)
         {
             stdout.WriteLine($"FAILED   {project.Plugin}: {failed}");
-            Common.ShowLastLines(stdout, r.Output, 20);
+            // the gap lines are already shown above, so the tail leaves them out
+            var tail = string.Join("\n", r.Output.Split('\n').Where(l => GapLine(l) == null));
+            Common.ShowLastLines(stdout, tail, 20);
             var fix = r.ExitCode == 0 && r.Why == null
                 ? $"check that builder.args in {project.File} pass the output folder where the builder expects it ({{dist}}), and that the builder writes {project.Plugin}."
                 : "fix the error shown above (the full output is in the log: --log <file>) and run again.";

@@ -80,7 +80,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`. The plugin step shows BuildKit's gap check
   result (`gap check: RESULT: OK ...`, its ERROR lines, or `gap check: NOT RUN ...`); the other builder lines need
   `--verbose`. The `check` step checks the PC zip only. The Creations check runs on the creations-out folder instead
-  (`"xbox": true` makes it): `sf-mod-check release creations-out --profile creations`, which `build` prints at the end
+  (`"xbox": true` makes it): `sf-mod-check release creations-out --profile creations` (or the folder `"creationsOut"` names), which `build` prints at the end
   but doesn't run.
 - Build with a checker that isn't on PATH: `sf-mod-build build --checker "<path>\sf-mod-check.exe"`
 - Fail the build when no checker is found: `sf-mod-build build --require-check`
@@ -202,7 +202,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 ## 10. Limits
 
 - Never compiles with `-release` and has no option for it (it strips every `Debug.Trace`).
-- Never writes into the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist or
+- Never builds, packs or deletes in the game folder: it refuses dist or creations-out folders inside it and, in pack, a dist or
   creations-out folder that is a link or junction (in plugin, any dist that is a link or junction), and never
   empties a folder that is or holds the mod folder, a source folder, the builder or a drive root.
 - Never deletes a file it didn't make (since 0.4.1). In dist (plugin) and creations-out (pack with `"xbox": true`)

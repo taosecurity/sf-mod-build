@@ -6,7 +6,8 @@ sf-mod-build runs on your own computer. It collects no data and sends nothing an
 
 - It makes no network connections of its own.
 - It has no telemetry, analytics, crash reporting or update checks.
-- It never changes a game file, and it refuses to write into the game's folder.
+- It never changes a game file, and it refuses a dist, stage or creations-out folder inside the game's folder, so it
+  never builds, packs or deletes files there. (A `--log` file or a `zip.folder` goes wherever you point it.)
 
 ## What it reads
 
@@ -21,12 +22,12 @@ sf-mod-build runs on your own computer. It collects no data and sends nothing an
 
 ## What it writes
 
-- In your mod's folder: `.build` (compiled scripts and staged files), `dist` (the plugin, the archives and the zips
-  that `zip.folder` points at), `creations-out` with `"xbox": true`, the zip, and small made-lists
+- In your mod's folder: `.build` (compiled scripts and staged files), `dist` (the plugin and the archives),
+  `creations-out` with `"xbox": true`, the zip (in `zip.folder`, by default the mod's folder), and small made-lists
   (`.sf-mod-build-made`) that name the files it made in `dist` and `creations-out`, so it never deletes a file it didn't
   make. The folder names come from `sfmod.json`.
 - The game's script sources, copied once from the Creation Kit's own zip to `%LOCALAPPDATA%\sf-mod-build\vanilla\`
-  (on Linux `~/.local/share/sf-mod-build/`). That copy is the game's data from your own install; it stays on your
+  (on Linux `$XDG_DATA_HOME/sf-mod-build/vanilla/`, by default `~/.local/share/sf-mod-build/vanilla/`). That copy is the game's data from your own install; it stays on your
   computer. Delete the folder at any time and the next compile makes it again.
 - A log file, only when you ask for one with `--log <file>`. The log lists the paths of your mod, the game and the
   tools it ran, so it can include your Windows user name; read it before you share it. `--verbose` prints the same
