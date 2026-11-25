@@ -41,8 +41,9 @@ namespace SfModBuild
             "              (Main and Textures, and the _xbox ones for Creations), pack each part's scripts into\n" +
             "              \"<part> - Main.ba2\", make the project's archives list (packed from a folder, or a\n" +
             "              ready archive copied); then steps.afterPack\n" +
-            "  zip         write the mod's zip reproducibly (same files, same bytes)\n" +
-            "  check       run sf-mod-check (or sfmodcheck) release on the zip\n" +
+            "  zip         write the mod's zip reproducibly (same files, same bytes); a mod with parts gets one zip\n" +
+            "              per plugin\n" +
+            "  check       run sf-mod-check (or sfmodcheck) release on the zip (on each zip, for a mod with parts)\n" +
             "  build       compile, plugin, pack, zip and check in order\n" +
             "options for every command:\n" +
             "  --verbose       troubleshooting log on stderr (lines start \"log: \")\n" +

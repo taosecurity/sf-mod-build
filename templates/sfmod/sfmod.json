@@ -16,6 +16,8 @@
   "xbox": false,
   // Loose files (meshes, materials, textures, sounds), in a folder laid out like Data (Meshes, Textures ...):
   // "assets": { "source": "Assets" },
+  // More plugins from the builder, each shipped in its own zip ({name}-<Part>-{version}.zip):
+  // "parts": [ { "plugin": "MyMod-Patch.esm" } ],
   "zip": {
     "name": "{name}-{version}.zip",
     "files": {

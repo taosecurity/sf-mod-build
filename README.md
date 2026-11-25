@@ -1,7 +1,8 @@
 # sf-mod-build
 
 sf-mod-build builds a Starfield mod from one project file: you describe your mod once in `sfmod.json`, and one
-command turns its scripts and its plugin builder into a zip that Vortex and Mod Organizer 2 install as is. It also
+command turns its scripts and its plugin builder into a zip that Vortex and Mod Organizer 2 install as is (one zip
+per plugin, when the mod has more than one). It also
 comes with a starter project (`dotnet new sfmod`), so a new mod builds on the first try.
 
 Download the latest release from [Releases](https://github.com/taosecurity/sf-mod-build/releases); [Install](#install)
@@ -121,12 +122,15 @@ One `sf-mod-build build` runs five steps in order and stops at the first one tha
    and your textures into `<Plugin> - Textures.ba2`, with **your own** Creation Kit Archive2 (and the Xbox archives
    for Creations, if you ask for them).
 4. It writes a zip that Vortex and Mod Organizer 2 install as is, with the same bytes every time from the same inputs.
-5. It runs the `release` check of sf-mod-check on that zip, when you have it.
+   A mod with more than one plugin gets one zip per plugin (see [More plugins: parts](#more-plugins-parts)).
+5. It runs the `release` check of sf-mod-check on each zip, when you have it.
 
 sf-mod-build ships no game files. It uses the Papyrus compiler, Archive2 and script sources that the Creation Kit
 installs into your own copy of the game.
 
 ## What you need
+
+Platforms: Tested on PC (Steam) and Xbox. PS5 is not tested.
 
 - Windows 10 or 11 (the Creation Kit's compiler and Archive2 are Windows programs).
 - Starfield on **Steam**, with the **Starfield Creation Kit** installed from Steam (Library > Tools). The Creation
@@ -148,7 +152,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.4.2.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.5.0.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -157,14 +161,14 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.4.2-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.4.2-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
+- **As a program**: download `sf-mod-build-0.5.0-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.5.0-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
   `sha256sum -c SHA256SUMS` in the download folder checks every file, from 0.2.1 on). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.4.2.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.5.0.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -209,7 +213,7 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.5.0 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.5.0 is the
-  BuildKit version sf-mod-build 0.4.2 was tested with (the starter plugin it makes is unchanged from earlier BuildKit
+  BuildKit version sf-mod-build 0.5.0 was tested with (the starter plugin it makes is unchanged from earlier BuildKit
   versions).
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
@@ -232,8 +236,8 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first), and each part's scripts into `<stage>\parts\<part>\Scripts` (see [More plugins](#more-plugins-parts)). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Deletes what earlier builds made in dist (see [What dist may hold](#what-dist-may-hold)) and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). It stops (exit 1) when a plugin listed in `parts` isn't in dist. Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`, first deleting only what earlier builds made there (see [What creations-out may hold](#what-creations-out-may-hold)). It also packs each part's scripts into `<part> - Main.ba2` and makes each archive in the `archives` list (see [More archives](#more-archives-voices-and-ready-archives)). Then it runs your `steps.afterPack` commands. |
-| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives`, or a plugin or archive of `parts`, that isn't in dist. `zip.files` takes no archives. |
-| `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | Runs `<checker> release <zip> --data <game>\Data`. Each `--masters-dir` (it can be given more than once) is passed to the checker, for a master plugin that isn't in the Data folder, such as another mod's folder in your mod manager; a folder that isn't there stops it with exit 2. No checker is a WARNING, or a failure with `--require-check`. |
+| `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives`, or a plugin or archive of `parts`, that isn't in dist, and a plugin in dist that is neither `plugin` nor a part (unless `zip.split` is `false`). `zip.files` takes no archives. A mod with `parts` gets one zip per plugin (see [More plugins](#more-plugins-parts)). |
+| `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | Runs `<checker> release <zip> --data <game>\Data` on each zip, and reports the worst result. A part's zip also gets `--masters-dir <dist>`, because its master (the main plugin) is in the main zip. Each `--masters-dir` (it can be given more than once) is passed to the checker, for a master plugin that isn't in the Data folder, such as another mod's folder in your mod manager; a folder that isn't there stops it with exit 2. No checker is a WARNING, or a failure with `--require-check`. |
 | `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
 
@@ -316,13 +320,14 @@ allowed.
   ],
   "parts": [                                   // other plugins your builder writes into dist (optional)
     { "plugin": "MyMod-Extra.esm", "scripts": { "namespaces": ["MYMX"] } },  // with its own scripts ...
-    { "plugin": "MyMod-Patch.esm" }                                         // ... or none
+    { "plugin": "MyMod-Patch.esm", "zipPart": "Patch" }                     // ... or none; zipPart names its zip
   ],
   "zip": {
     "name": "{name}-{version}.zip",            // the zip's name (default {name}-{version}.zip)
     "folder": ".",                             // where the zip is written (default: the sfmod.json folder)
     "files": { "README.md": "README-{name}.md" },  // extra files: file here -> name inside the zip (never .psc or .ba2)
-    "archives": ["MyMod - Extra.ba2"]          // archives your builder writes into dist itself: they ship in the zip
+    "archives": ["MyMod - Extra.ba2"],         // archives your builder writes into dist itself: they ship in the zip
+    "split": true                              // with parts: one zip per plugin (default); false: one zip for all
   },
   "check": {
     "checker": "path/to/sf-mod-check.exe",     // default: sf-mod-check or sfmodcheck on PATH
@@ -474,7 +479,9 @@ count as stray. Each entry has a `suffix` and exactly one of these:
   `"compression": "none"` packs it uncompressed, which voice archives need (a `.wem` stored compressed plays
   silent); the default is `"default"`. `"format": "dds"` makes a texture archive; the default is `"general"`.
 - `file`: a ready archive (another author's original, for example), copied into dist as it is. It may sit outside
-  the mod's folder; it is only read. `compression` and `format` don't apply to it.
+  the mod's folder; it is only read. `compression` and `format` don't apply to it. When `pack` has nothing to pack
+  but ready archives (no scripts, no loose files, no `source` entries), it needs neither Archive2 nor the game, so
+  it runs on Linux too; a wrong `--game` still stops it.
 
 ```jsonc
 "archives": [
@@ -516,7 +523,26 @@ written like the top-level `scripts` (its `source` defaults to the top-level sou
   main plugin's scripts.
 - `pack` packs them into `<part> - Main.ba2` in dist. A part without scripts gets no archive.
 - `plugin` stops (exit 1) when the builder didn't write every part plugin into dist, and `zip` stops (exit 2) when a
-  part plugin or a part's archive isn't there. The zip holds every plugin and archive; one zip for all of them.
+  part plugin or a part's archive isn't there.
+- `zip` writes **one zip per plugin**, so Vortex and MO2 install each plugin as its own mod and the user picks which
+  to enable. The main zip (`zip.name`, default `{name}-{version}.zip`) holds the main plugin, its archives (Main,
+  Textures, the `archives` list) and every other file: dist's other top-level files and the `zip.files` entries.
+  Each part's zip, `{name}-<Part>-{version}.zip` in `zip.folder`, holds the part plugin, its `<part> - Main.ba2` when
+  it has scripts, and a copy of each LICENSE or COPYING file renamed for the part (`LICENSE-MyMod.txt` becomes
+  `LICENSE-MyMod-Patch.txt`), so no two zips hold the same file.
+- `<Part>` is the part plugin's name without the extension, with the mod's `name` taken off the front and only
+  letters and digits kept: `MyMod-Patch.esm` gives `Patch`, and `MyMod - Shattered Space.esm` gives
+  `ShatteredSpace`. A part's `"zipPart": "Fixes"` (letters and digits only) picks the word itself.
+- An archive in `zip.archives` goes in the zip of the plugin whose name starts it (`MyMod-Extra - Voices.ba2` goes
+  with `MyMod-Extra.esm`; the longest matching name wins).
+- `zip` never guesses. It stops (exit 2, with the fix) when a plugin in dist is neither `plugin` nor a part (this
+  applies to a mod without parts too: 0.4.2 shipped such a plugin without a word), when a
+  `zip.archives` name starts with no plugin's name, and when two zips (or two files in one zip) would get the same
+  name. It writes every zip before it moves any into place, and it never deletes an old zip: a zip from a part you
+  removed stays, and `zip` prints a `note:` line naming it.
+- `"zip": { "split": false }` keeps all the plugins and archives in one zip, as sf-mod-build 0.4.2 and earlier did
+  (and then a plugin in dist that sfmod.json doesn't name ships in it, as before, instead of stopping `zip`).
+- `check` checks each zip, and gives a part's zip `--masters-dir <dist>`, since its master is in the main zip.
 - `validate` prints a `part:` line for each one, and reports as a PROBLEM a part plugin whose name (without the
   extension) is the main plugin's or another part's, a name that breaks the plugin-name rules, a script that is in
   two places (the top level and a part, or two parts), and `parts` with `builder.prebuilt` (which copies only one
@@ -530,8 +556,31 @@ part:     MyMod-Extra.esm (archive "MyMod-Extra - Main.ba2")
           namespaces MYMX
 part:     MyMod-Patch.esm (no scripts, so no archive)
 ...
-          holds MyMod.esm, MyMod-Extra.esm, MyMod-Patch.esm, MyMod - Main.ba2, MyMod-Extra - Main.ba2
+zip:      C:\Mods\MyMod\MyMod-0.1.0.zip
+          holds MyMod.esm, MyMod - Main.ba2, README-MyMod.md, LICENSE-MyMod.txt, and the other top-level files in dist
+zip:      C:\Mods\MyMod\MyMod-Extra-0.1.0.zip
+          holds MyMod-Extra.esm, MyMod-Extra - Main.ba2, and a copy of each LICENSE or COPYING file
+zip:      C:\Mods\MyMod\MyMod-Patch-0.1.0.zip
+          holds MyMod-Patch.esm, and a copy of each LICENSE or COPYING file
+...
 RESULT: OK
+```
+
+And `zip` on a mod with one part (`MyMod-Patch.esm`):
+
+```
+> sf-mod-build zip
+zip      MyMod-0.1.0.zip
+zipped   LICENSE-MyMod.txt
+zipped   MyMod - Main.ba2
+zipped   MyMod.esm
+zipped   README-MyMod.md
+sha256   ...
+zip      MyMod-Patch-0.1.0.zip
+zipped   LICENSE-MyMod-Patch.txt
+zipped   MyMod-Patch.esm
+sha256   ...
+RESULT: OK, 2 zips written in C:\Mods\MyMod (MyMod-0.1.0.zip: 4 files, 2948 bytes; MyMod-Patch-0.1.0.zip: 2 files, 581 bytes)
 ```
 
 ### Limits
@@ -615,7 +664,7 @@ A real run with a StarfieldCustom.ini that turns on only `bEnableLogging` (folde
 
 The tool is plain .NET 9 and is meant to run on Linux too (the CI runs its tests on Ubuntu), where `validate`
 and `zip` need nothing from Windows. The Creation Kit's compiler and Archive2 are Windows programs, so `compile` and
-`pack` fail there with a "couldn't be run" message. Running them under Wine or Proton hasn't been tried.
+`pack` fail there with a "couldn't be run" message (except a `pack` with only ready archives to copy). Running them under Wine or Proton hasn't been tried.
 
 ## Reproducible builds
 

@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.5.0
+
+### What's new
+
+- A mod with `parts` now gets **one zip per plugin**, so you no longer split the zip by hand, and Vortex and Mod Organizer 2 install each plugin as its own mod. The main zip (`zip.name`, default `{name}-{version}.zip`) holds the main plugin, its archives and every other file (README, LICENSE, the other top-level files in dist). Each part gets `{name}-<Part>-{version}.zip` with the part plugin, its `<part> - Main.ba2` when it has scripts, and a copy of each LICENSE or COPYING file renamed for the part, so no two zips hold the same file.
+- `<Part>` is the part plugin's name without the extension, with the mod's name taken off the front and only letters and digits kept (`MyMod-Patch.esm` gives `Patch`). A part's new `zipPart` field picks the word itself.
+- An archive in `zip.archives` goes in the zip of the plugin whose name starts it (the longest matching name wins).
+- `zip` never guesses where a file goes. It stops (exit 2, with the fix) when a `zip.archives` name starts with no plugin's name, or when two zips or two files in one zip would get the same name. It writes every zip before it moves any into place, and it never deletes an old zip: a zip from a part you removed stays, with a `note:` line naming it.
+- `check` checks each zip and reports the worst result. A part's zip gets `--masters-dir <dist>`, because its master is in the main zip. `build`'s last line names every zip, and `validate` lists each zip and what it holds.
+- New `"zip": { "split": false }` keeps one zip for all the plugins, as in 0.4.2.
+- `pack` with nothing to pack but ready archives (`archives` entries with `file`, and no scripts or loose files) no longer needs Archive2 or the game. A wrong `--game` still stops it.
+- The README and AGENTS.md now say which platforms are tested: PC (Steam) and Xbox. PS5 is not tested.
+
+### Changes
+
+- `zip` now stops (exit 2) when dist holds a plugin that is neither `plugin` nor one of the `parts`, also for a mod without parts. Before, such a plugin (an old copy, say) shipped in the zip without a word. The fix is in the message: list it in `parts`, or delete it from dist. With `"split": false` it ships, as before. Apart from this, a mod without parts gets the same zip as with 0.4.2, byte for byte.
+
+### Fixes
+
+- A `zip.folder` inside dist that the builder or a `steps` command creates is no longer added to dist's made list (`.sf-mod-build-made`). Before, it was, so after you moved `zip.folder` elsewhere the next `plugin` could delete that folder with the old zips in it.
+
+### Example
+
+A made-up mod, GapMod, whose builder writes `GapMod.esm` and `GapMod-Patch.esm`, with `"parts": [ { "plugin": "GapMod-Patch.esm" } ]` in sfmod.json (folder names shortened; sf-mod-check 0.17.0 given as the checker):
+
+    > sf-mod-build build --checker C:\Tools\sf-mod-check.exe
+    ...
+    == zip
+    zip      GapMod-0.1.0.zip
+    zipped   GapMod - Main.ba2
+    zipped   GapMod.esm
+    zipped   LICENSE-GapMod.txt
+    zipped   README-GapMod.md
+    sha256   f77126ddbe76e345dc4153158908af56474a1a24dcc825195d1192f2badd9c8b
+    zip      GapMod-Patch-0.1.0.zip
+    zipped   GapMod-Patch.esm
+    zipped   LICENSE-GapMod-Patch.txt
+    sha256   de746e4a7cfd31197d0812aedfc9ae54636639ad678c888b59d136f7ccfff120
+    RESULT: OK, 2 zips written in C:\Mods\GapMod (GapMod-0.1.0.zip: 4 files, 2948 bytes; GapMod-Patch-0.1.0.zip: 2 files, 581 bytes)
+    == check
+    checking GapMod-0.1.0.zip with sf-mod-check.exe
+    ...
+    RESULT: OK, GapMod-0.1.0.zip passed the release check
+    checking GapMod-Patch-0.1.0.zip with sf-mod-check.exe
+    ...
+    RESULT: OK, GapMod-Patch-0.1.0.zip passed the release check
+    RESULT: OK, built 2 zips: C:\Mods\GapMod\GapMod-0.1.0.zip; C:\Mods\GapMod\GapMod-Patch-0.1.0.zip
+
 ## 0.4.2 (2026-11-24)
 
 ### What's new

@@ -263,4 +263,17 @@ public class Release050Tests
             Assert.DoesNotContain("release", list);
         }
     }
+
+    /// <summary>G10 (0.5.0): the README and AGENTS.md say which platforms are tested. Skipped where the docs aren't
+    /// beside the sources.</summary>
+    [Fact]
+    public void TheDocsSayWhichPlatformsAreTested()
+    {
+        string? root = null;
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null && root == null; d = d.Parent)
+            if (File.Exists(Path.Combine(d.FullName, "README.md")) && Directory.Exists(Path.Combine(d.FullName, "src"))) root = d.FullName;
+        if (root == null) return;
+        foreach (var doc in new[] { "README.md", "AGENTS.md" })
+            Assert.Contains("Tested on PC (Steam) and Xbox. PS5 is not tested.", File.ReadAllText(Path.Combine(root, doc)));
+    }
 }

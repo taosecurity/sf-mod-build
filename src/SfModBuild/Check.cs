@@ -10,7 +10,8 @@ internal static class Check
 {
     public const string Usage =
         "usage: sf-mod-build check [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check] [--verbose] [--log <file>]\n" +
-        "  runs sf-mod-check (or sfmodcheck) release on the mod's zip; without a checker this is a WARNING,\n" +
+        "  runs sf-mod-check (or sfmodcheck) release on the mod's zip (on each zip for a mod with parts, a part's zip\n" +
+        "  with --masters-dir <dist> added); without a checker this is a WARNING,\n" +
         "  or a failure with --require-check (or \"check\": { \"required\": true } in sfmod.json);\n" +
         "  --masters-dir (can be given more than once) is passed to the checker, for a master that isn't in the Data folder";
 

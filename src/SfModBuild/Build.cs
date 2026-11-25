@@ -9,7 +9,7 @@ internal static class Build
         "usage: sf-mod-build build [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check] [--verbose] [--log <file>]\n" +
         "  compile, plugin, pack, zip and check in order; stops at the first step that fails\n" +
         "  the plugin step shows BuildKit's gap check result (--verbose shows the builder's other lines)\n" +
-        "  the check step checks the PC zip; the Creations check runs on the creationsOut folder (default creations-out): sf-mod-check release <creationsOut folder> --profile creations";
+        "  the check step checks the PC zip (each zip, for a mod with parts); the Creations check runs on the creationsOut folder (default creations-out): sf-mod-check release <creationsOut folder> --profile creations";
 
     public static readonly ArgSpec Spec = Check.Spec;
 

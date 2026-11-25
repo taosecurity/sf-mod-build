@@ -1,14 +1,15 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.4.2. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.5.0. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
 
 - sf-mod-build builds a Starfield mod from one project file, `sfmod.json`: it compiles the mod's Papyrus scripts
   with the Creation Kit's compiler, runs the mod's Mutagen builder to write the plugin, packs the scripts into a BA2
-  with the Creation Kit's Archive2, writes a reproducible zip for Vortex or MO2, and runs sf-mod-check's `release`
-  check on the zip.
+  with the Creation Kit's Archive2, writes a reproducible zip for Vortex or MO2 (one zip per plugin), and runs
+  sf-mod-check's `release` check on each zip.
+- Platforms: Tested on PC (Steam) and Xbox. PS5 is not tested.
 - `dotnet new sfmod` makes a starter mod that builds as is.
 - Use it when the person has (or wants) a mod whose plugin is made by a builder: a C# Mutagen builder project, or any
   other program (`builder.command`). A plugin made by hand in the Creation Kit or xEdit can be shipped as it is with
@@ -26,7 +27,7 @@ background; this file has what to run.
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
 5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.5.0]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.4.2 was tested with BuildKit 0.5.0;
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.5.0 was tested with BuildKit 0.5.0;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -79,7 +80,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Check the project file: `sf-mod-build validate`
 - Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`. The plugin step shows BuildKit's gap check
   result (`gap check: RESULT: OK ...`, its ERROR lines, or `gap check: NOT RUN ...`); the other builder lines need
-  `--verbose`. The `check` step checks the PC zip only. The Creations check runs on the creations-out folder instead
+  `--verbose`. The `check` step checks the PC zips only. The Creations check runs on the creations-out folder instead
   (`"xbox": true` makes it): `sf-mod-check release creations-out --profile creations` (or the folder `"creationsOut"` names), which `build` prints at the end
   but doesn't run.
 - Build with a checker that isn't on PATH: `sf-mod-build build --checker "<path>\sf-mod-check.exe"`
@@ -108,8 +109,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   uncompressed so the `.wem` files play) or `{ "suffix": "Textures", "file": "Original/MyMod - Textures.ba2" }`
   (copied as it is). pack makes `<Plugin> - <suffix>.ba2` in dist and zip ships it. Not with `"xbox": true`.
 - A builder that writes more than one plugin: list the others in `parts`, `[{ "plugin": "MyMod-Extra.esm",
-  "scripts": { "namespaces": ["MYMX"] } }]` (scripts optional). Each part's scripts go into `<Part> - Main.ba2`, and
-  one zip holds every plugin. A part with scripts is refused with `"xbox": true`.
+  "scripts": { "namespaces": ["MYMX"] } }]` (scripts optional). Each part's scripts go into `<part plugin> - Main.ba2`,
+  and each part gets its own zip, `<name>-<Part>-<version>.zip` (`MyMod-Extra-0.1.0.zip`), beside the main zip.
+  `"zipPart": "Extra"` on a part picks `<Part>` (letters and digits only). `"zip": { "split": false }` keeps one zip
+  for every plugin instead. A part with scripts is refused with `"xbox": true`.
 - One step at a time: `sf-mod-build compile`, `sf-mod-build plugin`, `sf-mod-build pack`, `sf-mod-build zip`,
   `sf-mod-build check` (each needs the steps before it to have run).
 - Troubleshoot: add `--verbose`, or `--log sf-mod-build-log.txt`, to any command.
@@ -145,11 +148,14 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   `desktop.ini`, or a `.psc`, plugin, archive or zip. A `file` is a ready `.ba2` that must exist (it may be outside the mod; it is only read);
   `compression` and `format` are refused with it. The suffix may be `Main` or `Textures` only when pack doesn't make
   that archive itself. Refused with `"xbox": true`, and a name can't also be in `zip.archives`.
-- Optional `parts`: a list of `{ "plugin", "scripts" }`, the other plugins the builder writes into dist. `scripts`
-  is optional and written like the top-level one; its `source` defaults to the top-level source folders. validate
+- Optional `parts`: a list of `{ "plugin", "scripts", "zipPart" }`, the other plugins the builder writes into dist.
+  `scripts` is optional and written like the top-level one; its `source` defaults to the top-level source folders.
+  `zipPart` (optional, letters and digits only) names the part's zip; the default is the part plugin's name
+  without the extension, with the mod's `name` taken off the front and only letters and digits kept. validate
   refuses a part plugin whose name without the extension is the main plugin's or another part's, a name that
   breaks the plugin-name rules, a script in two places (the top level and a part, or two parts), `parts` with
   `builder.prebuilt`, and a part with scripts with `"xbox": true`.
+- Optional `zip.split` (default `true`): with `parts`, one zip per plugin; `false` keeps one zip for all of them.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
   `CreationKitCustom.ini` in the game folder, and `Data\Scripts\Source` (read, never written).
@@ -167,13 +173,20 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   archive. pack copies the loose files into `<stage>\pack\` first.
 - With `parts`: each part plugin in dist (written by the builder; `plugin` exits 1 when one is missing), and for a
   part with scripts `<stage>\parts\<Part>\Scripts\<Namespace>\*.pex` and `<dist>\<Part> - Main.ba2`, where
-  `<Part>` is the part plugin's name without the extension. zip ships them all and stops with exit 2 when one
-  is missing.
+  `<Part>` is the part plugin's name without the extension. zip stops with exit 2 when one is missing.
 - With an `archives` list: `<dist>\<Plugin> - <suffix>.ba2` for each entry (packed from its `source`, or copied from
   its `file`). zip ships them, and stops with exit 2, naming the archive, when one isn't in dist.
 - With `"xbox": true`: `creations-out\` with dist's files plus `<Plugin> - Main_xbox.ba2` (and
   `<Plugin> - Textures_xbox.ba2` when there are textures).
 - The zip, `<name>-<version>.zip` by default, in the sfmod.json folder (or `zip.folder`); its sha256 is printed.
+  With `parts` (and `zip.split` not `false`) there is one zip per plugin: the main zip holds the main plugin, its
+  archives and every other file (README, LICENSE, the other top-level files in dist); each part's zip,
+  `<name>-<Part>-<version>.zip`, holds the part plugin, its `<part plugin> - Main.ba2` and a renamed copy of each
+  LICENSE or COPYING file (`LICENSE-MyMod-Extra.txt`). A `zip.archives` entry goes in the zip of the plugin whose
+  name starts it. zip stops with exit 2 (nothing written) when a plugin in dist is neither `plugin` nor a part
+  (also without parts), when a `zip.archives` name starts with no plugin's name, or when two zips or two files in
+  one zip would get the same name; the fix is in its RESULT line. It never deletes an old zip, and prints a `note:`
+  line naming the zip of a part that was removed. `check` checks each zip, giving a part's zip `--masters-dir <dist>`.
   A `.ba2` in dist that the build doesn't make stops zip (and pack with `"xbox": true`) with exit 2 and a RESULT
   line naming it (pack without xbox only prints a `WARNING` line naming it and exits 0). Ask the person which
   case it is: an old or stray archive is deleted from dist (sf-mod-build ships only the archives it builds and the
@@ -219,9 +232,9 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Doesn't convert art: `.tif`, `.fbx` and `.wav` are packed as they are (with a warning). Textures must already be
   `.dds` and sounds `.wem`; the Creation Kit's own tools make those. A PC `.wem` is silent on Xbox and PlayStation 5.
 - Ships no game files; uses the Creation Kit's own tools from the person's game folder.
-- `compile` and `pack` need Windows (the Creation Kit's tools are Windows programs).
-- A project with `parts` makes one zip that holds every plugin and archive; to ship one zip per plugin, split it
-  in the person's own script after `sf-mod-build build`.
+- `compile` and `pack` need Windows (the Creation Kit's tools are Windows programs). A `pack` with only ready
+  archives to copy (`archives` entries with `file`, and no scripts or loose files) needs neither Archive2 nor the game.
+- Tested on PC (Steam) and Xbox. PS5 is not tested.
 - A fresh compile gives `.pex` files with a new compile time, so BA2 and zip bytes change between compiles; compare
   plugins by bytes and scripts by meaning.
 - Don't hand-edit files in dist, stage or creations-out: the next build empties stage and deletes the files
