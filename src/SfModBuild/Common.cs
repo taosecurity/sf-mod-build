@@ -229,12 +229,12 @@ internal static class Common
     }
 
     /// <summary>Runs a step that writes into dist, then adds whatever new it left there to the made list.</summary>
-    public static int TrackDist(string? dist, Func<int> run)
+    public static int TrackDist(string? dist, Func<int> run, SfModProject? project = null)
     {
         var before = dist == null ? null : DistEntries(dist);
         var code = run();
         if (dist != null && DistEntries(dist) is { } after)
-            RecordMade(dist, after.Where(n => before == null || !before.Contains(n)), add: true);
+            RecordMade(dist, after.Where(n => (before == null || !before.Contains(n)) && !(project != null && HoldsZipFolder(project, Path.Combine(dist, n)))), add: true);
         return code;
     }
 

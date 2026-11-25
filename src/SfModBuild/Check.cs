@@ -78,12 +78,13 @@ internal static class Check
             return ExitCodes.Ok;
         }
 
-        var zip = Path.GetFullPath(project.ZipPath);
-        if (!File.Exists(zip))
-        {
-            stdout.WriteLine($"RESULT: CANNOT CHECK (there is no zip at {zip}. Fix: run sf-mod-build zip first, or sf-mod-build build).");
-            return ExitCodes.BadInput;
-        }
+        var zips = Zip.ZipPaths(project);
+        foreach (var z in zips)
+            if (!File.Exists(z))
+            {
+                stdout.WriteLine($"RESULT: CANNOT CHECK (there is no zip at {z}. Fix: run sf-mod-build zip first, or sf-mod-build build).");
+                return ExitCodes.BadInput;
+            }
 
         var hasData = project.CheckArgs.Any(a => a == "--data" || a.StartsWith("--data=", StringComparison.Ordinal));
         string? data = null;
@@ -98,6 +99,20 @@ internal static class Check
             if (game != null) data = Path.Combine(game.Folder, "Data");
             else Log.Write("check: the game wasn't found, so the checker uses its own default Data folder");
         }
+        // one check per zip, and the worst result counts. A part zip lacks its master (the main plugin), so the
+        // checker is also pointed at dist, where the main plugin is
+        var worst = ExitCodes.Ok;
+        for (var n = 0; n < zips.Count; n++)
+        {
+            var mastersFor = n == 0 ? masters : masters.Append(Path.TrimEndingDirectorySeparator(Path.GetFullPath(project.Dist))).ToList();
+            var code = CheckZip(project, env, stdout, checker, zips[n], data, mastersFor);
+            if (code != ExitCodes.Ok && (worst == ExitCodes.Ok || code == ExitCodes.BadInput)) worst = code;
+        }
+        return worst;
+    }
+
+    static int CheckZip(SfModProject project, IHostEnv env, TextWriter stdout, string checker, string zip, string? data, List<string> masters)
+    {
         var line = CommandLine(zip, data, masters.SelectMany(m => new[] { "--masters-dir", m }).Concat(project.CheckArgs));
         stdout.WriteLine($"checking {Path.GetFileName(zip)} with {Path.GetFileName(checker)}");
         Log.Write($"checker: in {project.Folder}: \"{checker}\" {line}");

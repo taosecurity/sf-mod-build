@@ -39,12 +39,15 @@
 //       { "plugin": "MyMod-Extra.esm",             each ships in the zip; with scripts (same shape as above, source
 //         "scripts": { "namespaces": ["MYMX"] } }, defaulting to the top-level source) it gets "<part> - Main.ba2"
 //       { "plugin": "MyMod-Patch.esm" }            ... or none (a records-only plugin); scripts not with xbox
+//       ...                                        each part also gets its own zip {name}-<Part>-{version}.zip; "zipPart":
+//                                                  "Patch" picks <Part> (default: the plugin name, cleaned)
 //     ],
 //     "zip": {
 //       "name": "{name}-{version}.zip",            the zip's name (default {name}-{version}.zip)
 //       "folder": ".",                             where the zip is written (default: the sfmod.json folder)
 //       "files": { "README.md": "README-{name}.md" },  extra files: file here -> name inside the zip (never .psc)
-//       "archives": ["MyMod - Extra.ba2"]          archives your builder writes into dist itself: they ship in the zip
+//       "archives": ["MyMod - Extra.ba2"],         archives your builder writes into dist itself: they ship in the zip
+//       "split": true                              with parts: one zip per plugin (default); false: one zip for all
 //     },
 //     "check": {
 //       "checker": "path/to/sf-mod-check.exe",     default: sf-mod-check or sfmodcheck on PATH
@@ -120,7 +123,7 @@ internal sealed class SfModProject
 
     /// <summary>One entry of parts: another plugin in dist and, optionally, its own scripts, which compile into
     /// &lt;stage&gt;/parts/&lt;plugin base&gt;/Scripts and are packed into "&lt;plugin base&gt; - Main.ba2".</summary>
-    public sealed record Part(string Plugin, ScriptsSection? Scripts)
+    public sealed record Part(string Plugin, ScriptsSection? Scripts, string? ZipPart = null)
     {
         public string PluginBase => Path.GetFileNameWithoutExtension(Plugin);
         public string Ba2Name => $"{PluginBase} - Main.ba2";
@@ -162,6 +165,8 @@ internal sealed class SfModProject
     public required string ZipName { get; init; }
     public required string ZipFolder { get; init; }
     public string ZipPath => Path.Combine(ZipFolder, ZipName);
+    /// <summary>zip.split (default true): with parts, one zip per plugin. False keeps every plugin in the one zip.</summary>
+    public bool ZipSplit { get; init; } = true;
     /// <summary>Extra zip files in the order written: full path here, name inside the zip.</summary>
     public required IReadOnlyList<(string Source, string NameInZip)> ZipFiles { get; init; }
     /// <summary>zip.archives: the .ba2 files the builder itself writes into dist; they ship in the zip and aren't stray.</summary>
@@ -211,7 +216,7 @@ internal sealed class SfModProject
     public const string FileName = "sfmod.json";
 
     static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "archives", "parts", "zip", "check" };
-    static readonly string[] PartFields = { "plugin", "scripts" };
+    static readonly string[] PartFields = { "plugin", "scripts", "zipPart" };
     static readonly string[] ArchiveFields = { "suffix", "source", "file", "compression", "format" };
     static readonly string[] StepsFields = { "afterPlugin", "afterPack" };
     public static readonly string[] StepPlaceholders = { "data", "dist", "scripts", "stage", "version", "name", "plugin" };
@@ -224,7 +229,7 @@ internal sealed class SfModProject
     public static readonly string[] SkippedAssetNames ={ "Thumbs.db", "desktop.ini" };
     static readonly string[] ScriptsFields = { "source", "namespaces", "files", "optimize" };
     static readonly string[] BuilderFields = { "project", "command", "prebuilt", "args" };
-    static readonly string[] ZipFields = { "name", "folder", "files", "archives" };
+    static readonly string[] ZipFields = { "name", "folder", "files", "archives", "split" };
     static readonly string[] CheckFields = { "checker", "required", "args" };
     public static readonly string[] BuilderPlaceholders = { "data", "dist", "scripts", "stage", "version" };
     public static readonly string[] ZipPlaceholders = { "name", "plugin", "version" };
@@ -376,6 +381,12 @@ internal sealed class SfModProject
             var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 }, assets is { Textures.Count: > 0 },
                 dist, stage, creationsOut, packed);
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
+            var zipSplit = true;
+            if (root.TryGetProperty("zip", out var zsec) && zsec.ValueKind == JsonValueKind.Object && zsec.TryGetProperty("split", out var zs) && zs.ValueKind != JsonValueKind.Null)
+            {
+                if (zs.ValueKind is JsonValueKind.True or JsonValueKind.False) zipSplit = zs.GetBoolean();
+                else Error("zip.split", $"it is a {Kind(zs)}, not true or false.", "write true (one zip per plugin, the default) or false (every plugin in one zip).");
+            }
             var (checker, checkRequired, checkArgs) = Check(root);
 
             if (plugin == null || name == null || version == null || builder == null || steps == null || dist == null
@@ -387,7 +398,7 @@ internal sealed class SfModProject
                 BuilderProject = builder.Project, BuilderCommand = builder.Command, BuilderPrebuilt = builder.Prebuilt,
                 BuilderArgs = builder.Args, AfterPlugin = steps.Value.AfterPlugin, AfterPack = steps.Value.AfterPack, Dist = dist, Stage = stage, Xbox = xbox,
                 CreationsOut = creationsOut, Parts = parts, Archives = extra, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
-                Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs,
+                Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs, ZipSplit = zipSplit,
             };
             foreach (var a in zipArchives)
                 if (extra.Any(x => string.Equals(x.Name, a, StringComparison.OrdinalIgnoreCase)))
@@ -465,7 +476,17 @@ internal sealed class SfModProject
                             Error(at + ".scripts", $"the script {x.Name} is also in {first}, so two archives would hold it and whichever loaded last would win.", "list each script in one place only.");
                         else owner[x.Name] = at + ".scripts";
                 }
-                if (name != null) list.Add(new SfModProject.Part(name, own));
+                string? zipPart = null;
+                if (e.TryGetProperty("zipPart", out var zp) && zp.ValueKind != JsonValueKind.Null)
+                {
+                    zipPart = String(e, "zipPart", false, "\"Patch\"", at + ".zipPart");
+                    if (zipPart != null && (zipPart.Length == 0 || !zipPart.All(char.IsAsciiLetterOrDigit)))
+                    {
+                        Error(at + ".zipPart", $"\"{zipPart}\" isn't letters and digits only.", "give the word that goes in the part's zip name, such as \"Patch\" (letters and digits only, no spaces), or leave zipPart out.");
+                        zipPart = null;
+                    }
+                }
+                if (name != null) list.Add(new SfModProject.Part(name, own, zipPart));
             }
             return problems.Count(x => !x.IsWarning) == before ? list : null;
         }

@@ -23,16 +23,18 @@ internal static class Plugin
     public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
         string? dist = null;
+        SfModProject? loaded = null;
         HashSet<string>? before = null;
         var code = Steps.After("afterPlugin", p, env, stdout, "CANNOT BUILD THE PLUGIN", o =>
         {
             var made = Make(p, env, o);
-            dist = Common.LoadProject(p, TextWriter.Null, "")?.Dist;
+            loaded = Common.LoadProject(p, TextWriter.Null, "");
+            dist = loaded?.Dist;
             if (dist != null) before = Common.DistEntries(dist);
             return made;
         });
         if (dist != null && before != null && Common.DistEntries(dist) is { } after)
-            Common.RecordMade(dist, after.Where(n => !before.Contains(n)), add: true);
+            Common.RecordMade(dist, after.Where(n => !before.Contains(n) && !(loaded != null && Common.HoldsZipFolder(loaded, Path.Combine(dist, n)))), add: true);
         return code;
     }
 

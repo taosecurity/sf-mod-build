@@ -36,7 +36,8 @@ internal static class Pack
     /// <summary>Packs, then runs steps.afterPack. What they add to dist joins the made list.</summary>
     public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout) =>
         Common.TrackDist(Common.LoadProject(p, TextWriter.Null, "")?.Dist,
-            () => Steps.After("afterPack", p, env, stdout, "CANNOT PACK", o => PackProject(p, env, o)));
+            () => Steps.After("afterPack", p, env, stdout, "CANNOT PACK", o => PackProject(p, env, o)),
+            Common.LoadProject(p, TextWriter.Null, ""));
 
     static int PackProject(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
@@ -71,19 +72,23 @@ internal static class Pack
                 return ExitCodes.BadInput;
             }
         }
+        // only ready archives to copy (archives entries with "file"): Archive2 never runs, so it isn't needed, and a game that
+        // can't be found doesn't stop the copy (a --game that is wrong still does)
+        var needsArchive2 = project.HasMainArchive || project.HasTexturesArchive || project.Parts.Any(x => x.Scripts != null) || project.Archives.Any(a => a.File == null);
         var game = Common.FindGame(p.Get("--game"), env, out var error);
-        if (game == null)
+        if (game == null && (needsArchive2 || p.Get("--game") != null))
         {
             stdout.WriteLine($"RESULT: CANNOT PACK ({error})");
             return ExitCodes.BadInput;
         }
-        var archive2 = Path.Combine(game.Folder, "Tools", "Archive2", "Archive2.exe");
+        if (!needsArchive2) return PackAll(project, game?.Folder, "", env, stdout);
+        var archive2 = Path.Combine(game!.Folder, "Tools", "Archive2", "Archive2.exe");
         if (!File.Exists(archive2))
         {
             stdout.WriteLine($"RESULT: CANNOT PACK (Archive2 isn't at {archive2}. {Doctor.CkHowTo})");
             return ExitCodes.BadInput;
         }
-        return PackAll(project, game.Folder, archive2, env, stdout);
+        return PackAll(project, game!.Folder, archive2, env, stdout);
     }
 
     /// <summary>Archive2's command line for a scripts-only archive:
@@ -176,7 +181,7 @@ internal static class Pack
     /// <summary>One archive to make: its file, its source folder and root, and Archive2's format and compression.</summary>
     sealed record Job(string Ba2, string Source, string Root, string? Format, string? Compression);
 
-    public static int PackAll(SfModProject project, string gameFolder, string archive2, IHostEnv env, TextWriter stdout)
+    public static int PackAll(SfModProject project, string? gameFolder, string archive2, IHostEnv env, TextWriter stdout)
     {
         // every install found, not only the one in use: the mod may sit in a second install
         var games = Common.GameFolders(gameFolder, env);
@@ -192,7 +197,7 @@ internal static class Pack
             stdout.WriteLine(DistRefused(project, distWhy));
             return ExitCodes.BadInput;
         }
-        if (project.Assets != null && AssetsInGame(project.Assets, gameFolder) is { } inGame)
+        if (project.Assets != null && gameFolder != null && AssetsInGame(project.Assets, gameFolder) is { } inGame)
         {
             stdout.WriteLine($"RESULT: CANNOT PACK ({inGame}). Fix: copy the mod's own loose files into a folder of the mod, for example \"Assets\", and point assets.source at it.");
             return ExitCodes.BadInput;
@@ -377,9 +382,9 @@ internal static class Pack
     /// afterPlugin step, so it is checked here, with the assets rules: it must be there, hold files, be apart from the
     /// game's folder, hold no links, no files at its top and no .psc, plugins, archives or zips. A ready archive
     /// must still be there.</summary>
-    static string? ExtraProblem(SfModProject project, string gameFolder)
+    static string? ExtraProblem(SfModProject project, string? gameFolder)
     {
-        var game = Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameFolder));
+        var game = gameFolder == null ? null : Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameFolder));
         foreach (var a in project.Archives)
         {
             var what = $"the archives entry for \"{a.Name}\"";
@@ -391,9 +396,9 @@ internal static class Pack
             var src = a.Source!;
             if (!Directory.Exists(src))
                 return $"{what} packs the folder {src}, which isn't there. Fix: make the folder and put the archive's files in it (laid out like Data), or have a steps.afterPlugin command fill it";
-            if (string.Equals(src, game, StringComparison.OrdinalIgnoreCase)
+            if (game != null && (string.Equals(src, game, StringComparison.OrdinalIgnoreCase)
                 || src.StartsWith(game + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                || game.StartsWith(src + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                || game.StartsWith(src + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
                 return $"{what} packs {src}, which is inside or holds the game's folder {game}, so the game's own files would be packed. Fix: copy the files into a folder of the mod";
             var count = 0;
             try

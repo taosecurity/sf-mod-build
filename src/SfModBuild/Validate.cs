@@ -92,8 +92,25 @@ internal static class Validate
         var xboxArchives = (p.HasMainArchive ? new[] { p.XboxBa2Name } : Array.Empty<string>())
             .Concat(p.HasTexturesArchive ? new[] { p.XboxTexturesBa2Name } : Array.Empty<string>()).ToList();
         o.WriteLine($"xbox:     {(!p.Xbox ? "no" : xboxArchives.Count == 0 ? $"yes, but there is nothing to pack for it; {p.CreationsOut} isn't made" : $"yes, {string.Join(" and ", xboxArchives.Select(a => $"\"{a}\""))} in {p.CreationsOut}")}");
-        o.WriteLine($"zip:      {p.ZipPath}");
-        o.WriteLine($"          holds {p.Plugin}" + string.Concat(p.Parts.Select(x => $", {x.Plugin}")) + string.Concat(archives.Concat(p.ZipArchives).Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
+        if (!Zip.Splits(p))
+        {
+            o.WriteLine($"zip:      {p.ZipPath}");
+            o.WriteLine($"          holds {p.Plugin}" + string.Concat(p.Parts.Select(x => $", {x.Plugin}")) + string.Concat(archives.Concat(p.ZipArchives).Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")));
+        }
+        else
+        {
+            // one zip per plugin: the main zip holds what no part owns, each part zip its plugin and its own archive
+            var mine = archives.Concat(p.ZipArchives).Where(a => !p.Parts.Any(x => string.Equals(x.Ba2Name, a, StringComparison.OrdinalIgnoreCase))
+                && !p.Parts.Any(x => a.StartsWith(x.PluginBase + " - ", StringComparison.OrdinalIgnoreCase) && x.PluginBase.Length > p.PluginBase.Length && p.ZipArchives.Contains(a)));
+            o.WriteLine($"zip:      {p.ZipPath}");
+            o.WriteLine($"          holds {p.Plugin}" + string.Concat(mine.Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")) + ", and the other top-level files in dist");
+            foreach (var x in p.Parts)
+            {
+                var z = Zip.PartZipPath(p, x);
+                o.WriteLine($"zip:      {(z ?? "(no name: set zipPart on " + x.Plugin + ")")}");
+                o.WriteLine($"          holds {x.Plugin}" + (x.Scripts != null ? $", {x.Ba2Name}" : "") + ", and a copy of each LICENSE or COPYING file");
+            }
+        }
         o.WriteLine($"check:    {p.Checker ?? "sf-mod-check or sfmodcheck from PATH"}{(p.CheckRequired ? ", required" : ", a missing checker is a WARNING")}"
             + (p.CheckArgs.Count > 0 ? $", extra options {string.Join(" ", p.CheckArgs)}" : ""));
     }

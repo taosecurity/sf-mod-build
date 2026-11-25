@@ -25,7 +25,7 @@ internal static class Build
             ("zip", Zip.Run),
             ("check", Check.Run),
         };
-        string? zipPath = null;
+        List<string> zipPaths = new();
         string? creationsNote = null;
         foreach (var (name, run) in steps)
         {
@@ -41,12 +41,12 @@ internal static class Build
             if (name == "zip")
             {
                 var project = Common.LoadProject(p, TextWriter.Null, "");
-                zipPath = project == null ? null : Path.GetFullPath(project.ZipPath);
+                zipPaths = project == null ? new() : Zip.ZipPaths(project);
                 if (project is { Xbox: true }) creationsNote = $"note: the Creations check runs on the creations-out folder, not on the PC zip, and build does not run it. Run: sf-mod-check release \"{Path.GetFullPath(project.CreationsOut)}\" --profile creations";
             }
         }
         if (creationsNote != null) stdout.WriteLine(creationsNote);
-        stdout.WriteLine($"RESULT: OK, built {zipPath}");
+        stdout.WriteLine(zipPaths.Count > 1 ? $"RESULT: OK, built {zipPaths.Count} zips: {string.Join("; ", zipPaths)}" : $"RESULT: OK, built {(zipPaths.Count == 1 ? zipPaths[0] : "")}");
         return ExitCodes.Ok;
     }
 }

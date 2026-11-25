@@ -95,7 +95,10 @@ public class PartsTests
             Assert.Contains("part:     MyMod-Extra.esm (archive \"MyMod-Extra - Main.ba2\")", output);
             Assert.Contains($"          scripts from {Mod(t, "Scripts", "Source")}", output);
             Assert.Contains("part:     MyMod-Patch.esm (no scripts, so no archive)", output);
-            Assert.Contains("holds MyMod.esm, MyMod-Extra.esm, MyMod-Patch.esm, MyMod - Main.ba2, MyMod-Extra - Main.ba2", output);
+            Assert.Contains("holds MyMod.esm, MyMod - Main.ba2, and the other top-level files in dist", output);
+            Assert.Contains("MyMod-Extra-0.1.0.zip", output);
+            Assert.Contains("holds MyMod-Extra.esm, MyMod-Extra - Main.ba2, and a copy of each LICENSE or COPYING file", output);
+            Assert.Contains("holds MyMod-Patch.esm, and a copy", output);
         }
     }
 
@@ -374,7 +377,11 @@ public class PartsTests
             code = RunApp(env, out output, "zip", sfmod);
             Assert.True(code == ExitCodes.Ok, output);
             using var zip = ZipFile.OpenRead(Mod(t, "MyMod-0.1.0.zip"));
-            Assert.Equal(new[] { "MyMod - Main.ba2", "MyMod-Extra - Main.ba2", "MyMod-Extra.esm", "MyMod-Patch.esm", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
+            Assert.Equal(new[] { "MyMod - Main.ba2", "MyMod.esm" }, zip.Entries.Select(e => e.FullName));
+            using var extra = ZipFile.OpenRead(Mod(t, "MyMod-Extra-0.1.0.zip"));
+            Assert.Equal(new[] { "MyMod-Extra - Main.ba2", "MyMod-Extra.esm" }, extra.Entries.Select(e => e.FullName));
+            using var patch = ZipFile.OpenRead(Mod(t, "MyMod-Patch-0.1.0.zip"));
+            Assert.Equal(new[] { "MyMod-Patch.esm" }, patch.Entries.Select(e => e.FullName));
         }
     }
 }
