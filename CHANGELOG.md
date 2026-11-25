@@ -4,12 +4,13 @@
 
 ### What's new
 
-- The `dotnet new sfmod` template now pins BuildKit 0.6.0 (it was 0.5.0), so a new mod gets the quest helpers. BuildKit 0.6.0 keeps `Mutagen.Bethesda.Starfield` 0.54.4. The starter mod builds with no code change, and the README and AGENTS.md name the new pin.
+- The `dotnet new sfmod` template now pins BuildKit 0.6.0 (it was 0.5.0), so the quest helpers in BuildKit 0.6.0 (see BuildKit's README, "Quests") are there for the quests you add to a new mod. The starter builder itself doesn't use them. BuildKit 0.6.0 keeps `Mutagen.Bethesda.Starfield` 0.54.4. The starter mod builds with no code change, and the README and AGENTS.md name the new pin.
 
 ### Example
 
 ```
 dotnet new sfmod -n MyMod
+cd MyMod
 sf-mod-build build
 ```
 

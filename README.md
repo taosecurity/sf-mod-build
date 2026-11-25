@@ -213,8 +213,8 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.6.0 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.6.0 is the
-  BuildKit version sf-mod-build 0.5.1 was tested with (the starter plugin it makes is unchanged from earlier BuildKit
-  versions, and 0.6.0 adds the quest helpers for the quests you add).
+  BuildKit version sf-mod-build 0.5.1 was tested with. The starter builder needs no change for 0.6.0, and 0.6.0 adds
+  quest helpers you can use for the quests you add (the starter's own quest doesn't use them).
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
 - One starter script, `Scripts\Source\MYM\StarterQuestScript.psc`, that writes `[MyMod]` lines to the Papyrus log.
