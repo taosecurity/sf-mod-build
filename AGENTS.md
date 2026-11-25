@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.5.0. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.5.1. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -26,8 +26,8 @@ background; this file has what to run.
    https://github.com/taosecurity/sf-mod-check/releases (`sf-mod-check.exe`).
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
-5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.5.0]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.5.0 was tested with BuildKit 0.5.0;
+5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.6.0]` and `Mutagen.Bethesda.Starfield`
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.5.1 was tested with BuildKit 0.6.0;
    don't change the pin unless the person asks.
 
 ## 3. Install

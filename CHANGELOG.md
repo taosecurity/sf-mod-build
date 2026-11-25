@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.1 (2026-11-25)
+
+### What's new
+
+- The `dotnet new sfmod` template now pins BuildKit 0.6.0 (it was 0.5.0), so a new mod gets the quest helpers. BuildKit 0.6.0 keeps `Mutagen.Bethesda.Starfield` 0.54.4. The starter mod builds with no code change, and the README and AGENTS.md name the new pin.
+
+### Example
+
+```
+dotnet new sfmod -n MyMod
+sf-mod-build build
+```
+
+The `Builder\MyMod.Builder.csproj` that `dotnet new` writes now has `<PackageReference Include="Taosecurity.Starfield.BuildKit" Version="[0.6.0]" />`.
+
 ## 0.5.0 (2026-11-25)
 
 ### What's new
