@@ -100,15 +100,17 @@ internal static class Validate
         else
         {
             // one zip per plugin: the main zip holds what no part owns, each part zip its plugin and its own archive
-            var mine = archives.Concat(p.ZipArchives).Where(a => !p.Parts.Any(x => string.Equals(x.Ba2Name, a, StringComparison.OrdinalIgnoreCase))
-                && !p.Parts.Any(x => a.StartsWith(x.PluginBase + " - ", StringComparison.OrdinalIgnoreCase) && x.PluginBase.Length > p.PluginBase.Length && p.ZipArchives.Contains(a)));
+            var mine = archives.Where(a => !p.Parts.Any(x => x.Scripts != null && string.Equals(x.Ba2Name, a, StringComparison.OrdinalIgnoreCase)))
+                .Concat(p.ZipArchives.Where(a => Zip.ArchiveOwner(p, a) == -1));
             o.WriteLine($"zip:      {p.ZipPath}");
             o.WriteLine($"          holds {p.Plugin}" + string.Concat(mine.Select(a => $", {a}")) + string.Concat(p.ZipFiles.Select(f => $", {f.NameInZip}")) + ", and the other top-level files in dist");
-            foreach (var x in p.Parts)
+            for (var k = 0; k < p.Parts.Count; k++)
             {
+                var x = p.Parts[k];
                 var z = Zip.PartZipPath(p, x);
+                var own = p.ZipArchives.Where(a => Zip.ArchiveOwner(p, a) == k);
                 o.WriteLine($"zip:      {(z ?? "(no name: set zipPart on " + x.Plugin + ")")}");
-                o.WriteLine($"          holds {x.Plugin}" + (x.Scripts != null ? $", {x.Ba2Name}" : "") + ", and a copy of each LICENSE or COPYING file");
+                o.WriteLine($"          holds {x.Plugin}" + (x.Scripts != null ? $", {x.Ba2Name}" : "") + string.Concat(own.Select(a => $", {a}")) + ", and a copy of each LICENSE or COPYING file");
             }
         }
         o.WriteLine($"check:    {p.Checker ?? "sf-mod-check or sfmodcheck from PATH"}{(p.CheckRequired ? ", required" : ", a missing checker is a WARNING")}"

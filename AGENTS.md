@@ -154,7 +154,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   without the extension, with the mod's `name` taken off the front and only letters and digits kept. validate
   refuses a part plugin whose name without the extension is the main plugin's or another part's, a name that
   breaks the plugin-name rules, a script in two places (the top level and a part, or two parts), `parts` with
-  `builder.prebuilt`, and a part with scripts with `"xbox": true`.
+  `builder.prebuilt`, a part with scripts with `"xbox": true`, and (with `zip.split` on) two zips with one name
+  and a `zip.archives` name that starts with no plugin's name.
 - Optional `zip.split` (default `true`): with `parts`, one zip per plugin; `false` keeps one zip for all of them.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),

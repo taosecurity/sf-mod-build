@@ -8,7 +8,7 @@
 - `<Part>` is the part plugin's name without the extension, with the mod's name taken off the front and only letters and digits kept (`MyMod-Patch.esm` gives `Patch`). A part's new `zipPart` field picks the word itself.
 - An archive in `zip.archives` goes in the zip of the plugin whose name starts it (the longest matching name wins).
 - `zip` never guesses where a file goes. It stops (exit 2, with the fix) when a `zip.archives` name starts with no plugin's name, or when two zips or two files in one zip would get the same name. It writes every zip before it moves any into place, and it never deletes an old zip: a zip from a part you removed stays, with a `note:` line naming it.
-- `check` checks each zip and reports the worst result. A part's zip gets `--masters-dir <dist>`, because its master is in the main zip. `build`'s last line names every zip, and `validate` lists each zip and what it holds.
+- `check` checks each zip and reports the worst result. A part's zip gets `--masters-dir <dist>`, because its master is in the main zip. `build`'s last line names every zip, and `validate` lists each zip and what it holds, and reports two zips with one name and a `zip.archives` name no plugin owns before a build.
 - New `"zip": { "split": false }` keeps one zip for all the plugins, as in 0.4.2.
 - `pack` with nothing to pack but ready archives (`archives` entries with `file`, and no scripts or loose files) no longer needs Archive2 or the game. A wrong `--game` still stops it.
 - The README and AGENTS.md now say which platforms are tested: PC (Steam) and Xbox. PS5 is not tested.

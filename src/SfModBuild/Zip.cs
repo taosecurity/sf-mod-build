@@ -164,6 +164,24 @@ internal static class Zip
         return dot > 0 ? fileName[..dot] + $"-{modName}-{label}" + fileName[dot..] : fileName + $"-{modName}-{label}";
     }
 
+    /// <summary>Whose zip a zip.archives entry goes in: -1 the main plugin, k the part k, null when no plugin's name
+    /// followed by " - " starts it (the longest name wins).</summary>
+    public static int? ArchiveOwner(SfModProject project, string archive)
+    {
+        var owners = new List<(string Base, int Index)> { (project.PluginBase, -1) };
+        for (var k = 0; k < project.Parts.Count; k++) owners.Add((project.Parts[k].PluginBase, k));
+        return owners.Where(o => archive.StartsWith(o.Base + " - ", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(o => o.Base.Length).Select(o => (int?)o.Index).FirstOrDefault();
+    }
+
+    /// <summary>The reason zip.archives entry has no owner, with the fix (no closing period).</summary>
+    public static string NoOwnerError(SfModProject project, string archive) =>
+        $"zip can't tell which plugin owns the archive \"{archive}\" (zip.archives): no plugin's name followed by \" - \" starts it. Fix: name it \"<plugin> - <suffix>.ba2\", for example \"{project.PluginBase} - Extra.ba2\", so it goes with that plugin";
+
+    /// <summary>A zip name two of the split zips would share (a part named like the main zip, or two parts alike), else null.</summary>
+    public static string? SharedZipName(SfModProject project) =>
+        ZipPaths(project).GroupBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1)?.Key;
+
     static bool IsPluginFile(string name) =>
         name.EndsWith(".esm", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".esp", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".esl", StringComparison.OrdinalIgnoreCase);
 
@@ -210,9 +228,6 @@ internal static class Zip
             error = $"two zips would both be \"{same.Key}\". Fix: set \"zipPart\" on one of the parts in {project.File}, or change zip.name";
             return null;
         }
-        // the plugin that owns an archive named "<plugin base> - <suffix>.ba2": the longest base wins
-        var owners = new List<(string Base, int Index)> { (project.PluginBase, -1) };
-        for (var k = 0; k < project.Parts.Count; k++) owners.Add((project.Parts[k].PluginBase, k));
         foreach (var (source, inZip) in entries)
         {
             var target = mainJob;
@@ -230,13 +245,12 @@ internal static class Zip
                     else
                     {
                         // zip.archives: the builder's own archive, owned by the plugin whose name starts it
-                        var best = owners.Where(o => inZip.StartsWith(o.Base + " - ", StringComparison.OrdinalIgnoreCase)).OrderByDescending(o => o.Base.Length).Cast<(string Base, int Index)?>().FirstOrDefault();
-                        if (best == null)
+                        if (ArchiveOwner(project, inZip) is not { } owner)
                         {
-                            error = $"zip can't tell which plugin owns the archive \"{inZip}\" (zip.archives): no plugin's name followed by \" - \" starts it. Fix: name it \"<plugin> - <suffix>.ba2\", for example \"{project.PluginBase} - Extra.ba2\", so it goes with that plugin";
+                            error = NoOwnerError(project, inZip);
                             return null;
                         }
-                        idx = best.Value.Index;
+                        idx = owner;
                         found = true;
                     }
                 }

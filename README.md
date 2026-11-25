@@ -545,8 +545,10 @@ written like the top-level `scripts` (its `source` defaults to the top-level sou
 - `check` checks each zip, and gives a part's zip `--masters-dir <dist>`, since its master is in the main zip.
 - `validate` prints a `part:` line for each one, and reports as a PROBLEM a part plugin whose name (without the
   extension) is the main plugin's or another part's, a name that breaks the plugin-name rules, a script that is in
-  two places (the top level and a part, or two parts), and `parts` with `builder.prebuilt` (which copies only one
-  plugin). In this version a part with scripts can't be used with `"xbox": true`.
+  two places (the top level and a part, or two parts), `parts` with `builder.prebuilt` (which copies only one
+  plugin), and the two zip problems above that sfmod.json alone shows: two zips with one name, and a `zip.archives`
+  name that starts with no plugin's name. It lists each zip and what it holds. In this version a part with
+  scripts can't be used with `"xbox": true`.
 
 ```
 > sf-mod-build validate

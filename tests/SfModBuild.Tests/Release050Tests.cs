@@ -164,6 +164,45 @@ public class Release050Tests
     }
 
     [Fact]
+    public void ValidateReportsTwoZipsWithOneNameAndAnArchiveNoPluginOwns()
+    {
+        // bug hunt 2026-11-25: validate said OK (and listed one zip twice); only zip refused
+        var parts = "{ \"plugin\": \"MyMod-Patch.esm\" }, { \"plugin\": \"MyMod Patch.esp\" }";
+        var (t, sfmod, env) = Setup(Json(parts));
+        using (t)
+        {
+            Assert.Equal(ExitCodes.BadInput, RunApp(env, out var output, "validate", sfmod));
+            Assert.Contains("two zips would both be \"MyMod-Patch-0.1.0.zip\"", output);
+        }
+        var (t2, sfmod2, env2) = Setup(Json(Patch, ", \"archives\": [\"Loose.ba2\"]"));
+        using (t2)
+        {
+            Assert.Equal(ExitCodes.BadInput, RunApp(env2, out var output, "validate", sfmod2));
+            Assert.Contains("can't tell which plugin owns the archive \"Loose.ba2\"", output);
+        }
+        // with split false the archive goes in the one zip, so it is fine
+        var (t3, sfmod3, env3) = Setup(Json(Patch, ", \"archives\": [\"Loose.ba2\"], \"split\": false"));
+        using (t3) Assert.Equal(ExitCodes.Ok, RunApp(env3, out _, "validate", sfmod3));
+    }
+
+    [Fact]
+    public void ValidateListsAPartsOwnZipArchivesInThePartsZip()
+    {
+        var json = Json(Dlc, ", \"archives\": [\"MyMod - Shattered Space - Voices_en.ba2\", \"MyMod - Extra.ba2\"]");
+        var (t, sfmod, env) = Setup(json);
+        using (t)
+        {
+            Assert.Equal(ExitCodes.Ok, RunApp(env, out var output, "validate", sfmod));
+            var lines = output.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+            var main = lines[lines.FindIndex(l => l.EndsWith("MyMod-0.1.0.zip")) + 1];
+            var part = lines[lines.FindIndex(l => l.EndsWith("MyMod-ShatteredSpace-0.1.0.zip")) + 1];
+            Assert.Contains("MyMod - Extra.ba2", main);
+            Assert.DoesNotContain("Voices_en", main);
+            Assert.Contains("MyMod - Shattered Space - Voices_en.ba2", part);
+        }
+    }
+
+    [Fact]
     public void ARemovedPartsOldZipIsLeftAloneWithANote()
     {
         var (t, sfmod, env) = Setup(Json(Patch), "MyMod.esm", "MyMod-Patch.esm");

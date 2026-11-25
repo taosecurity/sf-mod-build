@@ -423,6 +423,16 @@ internal sealed class SfModProject
             if (xbox && zipArchives.Count > 0)
                 Error("zip.archives", "it can't be used with \"xbox\": true, because pack can't make the Xbox copies of archives your builder writes, so the Creations set would lack them.",
                     "leave \"xbox\" off for this mod, or have pack make the archives instead (put the files in assets.source and leave zip.archives out).");
+            // one zip per plugin: the same refusals zip makes, so validate reports them before a build
+            if (SfModBuild.Zip.Splits(p))
+            {
+                if (SfModBuild.Zip.SharedZipName(p) is { } shared)
+                    Error("parts", $"two zips would both be \"{shared}\".", "set \"zipPart\" on one of the parts, or change zip.name.");
+                foreach (var a in zipArchives)
+                    if (SfModBuild.Zip.ArchiveOwner(p, a) == null)
+                        Error("zip.archives", $"zip can't tell which plugin owns the archive \"{a}\": no plugin's name followed by \" - \" starts it.",
+                            $"name it \"<plugin> - <suffix>.ba2\", for example \"{p.PluginBase} - Extra.ba2\", so it goes with that plugin, or set \"split\": false.");
+            }
             return p;
         }
 
