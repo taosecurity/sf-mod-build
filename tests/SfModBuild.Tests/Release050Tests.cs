@@ -188,6 +188,7 @@ public class Release050Tests
     [Fact]
     public void AZipThatCantBeMovedIntoPlaceIsTheOneNamedAndTheReplacedOnesAreListed()
     {
+        if (!OperatingSystem.IsWindows()) return; // an open file blocks its replacement only on Windows
         var (t, sfmod, env) = Setup(Json(Patch), "MyMod.esm", "MyMod-Patch.esm");
         using (t)
         {
