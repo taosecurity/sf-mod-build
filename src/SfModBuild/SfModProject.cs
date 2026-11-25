@@ -426,6 +426,9 @@ internal sealed class SfModProject
             // one zip per plugin: the same refusals zip makes, so validate reports them before a build
             if (SfModBuild.Zip.Splits(p))
             {
+                for (var i = 0; i < parts.Count; i++)
+                    if (SfModBuild.Zip.PartZipPath(p, parts[i]) == null)
+                        Error($"parts[{i}].plugin", $"the part {parts[i].Plugin} has no letters or digits to name its zip with.", "set \"zipPart\" on it, for example \"zipPart\": \"Patch\".");
                 if (SfModBuild.Zip.SharedZipName(p) is { } shared)
                     Error("parts", $"two zips would both be \"{shared}\".", "set \"zipPart\" on one of the parts, or change zip.name.");
                 foreach (var a in zipArchives)

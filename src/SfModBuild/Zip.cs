@@ -297,12 +297,16 @@ internal static class Zip
             stdout.WriteLine($"RESULT: CANNOT ZIP ({error}).");
             return ExitCodes.BadInput;
         }
-        // every zip goes to its temp file first and all are moved in after, so a failure leaves no mix of new and old zips
+        // every zip goes to its temp file first and all are moved in after, so a zip that can't be written replaces
+        // nothing; a move that fails names the zips already replaced
         var temps = new List<(Job Job, string Temp)>();
+        var current = jobs[0].ZipPath;
+        var replaced = new List<string>();
         try
         {
             foreach (var job in jobs)
             {
+                current = job.ZipPath;
                 var temp = job.ZipPath + PartialSuffix;
                 Directory.CreateDirectory(Path.GetDirectoryName(job.ZipPath)!);
                 if (File.Exists(temp)) File.Delete(temp);
@@ -319,13 +323,19 @@ internal static class Zip
                     Log.Write($"zip: {inZip} <- {source} ({new FileInfo(source).Length} bytes)");
                 }
             }
-            foreach (var (job, temp) in temps) File.Move(temp, job.ZipPath, overwrite: true);
+            foreach (var (job, temp) in temps)
+            {
+                current = job.ZipPath;
+                File.Move(temp, job.ZipPath, overwrite: true);
+                replaced.Add(Path.GetFileName(job.ZipPath));
+            }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             foreach (var (_, temp) in temps)
                 try { if (File.Exists(temp)) File.Delete(temp); } catch (Exception) { /* best effort */ }
-            stdout.WriteLine($"RESULT: FAILED, {jobs[0].ZipPath} wasn't written ({e.Message}). Fix: close any program that has the zip or its files open (Vortex, an archive viewer) and run again.");
+            var already = replaced.Count == 0 ? "" : $"; already replaced: {string.Join(", ", replaced)}";
+            stdout.WriteLine($"RESULT: FAILED, {current} wasn't written ({e.Message}{already}). Fix: close any program that has the zip or its files open (Vortex, an archive viewer) and run again.");
             return ExitCodes.Failed;
         }
         foreach (var job in jobs)

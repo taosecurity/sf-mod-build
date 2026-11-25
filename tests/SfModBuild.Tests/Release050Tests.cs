@@ -186,6 +186,37 @@ public class Release050Tests
     }
 
     [Fact]
+    public void AZipThatCantBeMovedIntoPlaceIsTheOneNamedAndTheReplacedOnesAreListed()
+    {
+        var (t, sfmod, env) = Setup(Json(Patch), "MyMod.esm", "MyMod-Patch.esm");
+        using (t)
+        {
+            Assert.Equal(ExitCodes.Ok, RunApp(env, out _, "zip", sfmod));
+            int code;
+            string output;
+            // the part zip held open, as Vortex or an archive viewer would
+            using (new FileStream(Mod(t, "MyMod-Patch-0.1.0.zip"), FileMode.Open, FileAccess.Read, FileShare.None))
+                code = RunApp(env, out output, "zip", sfmod);
+            Assert.Equal(ExitCodes.Failed, code);
+            Assert.Contains("MyMod-Patch-0.1.0.zip wasn't written", output);
+            Assert.DoesNotContain("MyMod-0.1.0.zip wasn't written", output);
+            Assert.Contains("already replaced: MyMod-0.1.0.zip", output);
+            Assert.Empty(Directory.GetFiles(Mod(t), "*" + Zip.PartialSuffix));
+        }
+    }
+
+    [Fact]
+    public void ValidateReportsAPartWhoseZipCantBeNamed()
+    {
+        var (t, sfmod, env) = Setup(Json("{ \"plugin\": \"テスト.esp\" }"));
+        using (t)
+        {
+            Assert.Equal(ExitCodes.BadInput, RunApp(env, out var output, "validate", sfmod));
+            Assert.Contains("no letters or digits to name its zip with", output);
+        }
+    }
+
+    [Fact]
     public void ValidateListsAPartsOwnZipArchivesInThePartsZip()
     {
         var json = Json(Dlc, ", \"archives\": [\"MyMod - Shattered Space - Voices_en.ba2\", \"MyMod - Extra.ba2\"]");
