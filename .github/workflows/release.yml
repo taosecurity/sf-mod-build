@@ -30,6 +30,7 @@ jobs:
       - run: dotnet test sf-mod-build.sln -c Release --no-restore
 
   release:
+    # guards against triggers added to this workflow later (today only a v* tag runs it)
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
     runs-on: windows-latest
@@ -89,24 +90,43 @@ jobs:
           $section = @()
           $on = $false
           foreach ($line in Get-Content CHANGELOG.md) {
-            if ($line -match '^## ') { $on = ($line -match ('^## ' + [regex]::Escape($env:VERSION) + '( |$)')); continue }
+            # only a heading that starts with a version number starts or ends a section
+            if ($line -match '^## \d+\.\d+\.\d+') { $on = ($line -match ('^## ' + [regex]::Escape($env:VERSION) + '( |$)')); continue }
             if ($on) { $section += $line }
           }
           $text = ($section -join "`n").Trim()
           if (-not $text) { throw "CHANGELOG.md has no section for $env:VERSION" }
-          [IO.File]::WriteAllText((Join-Path (Get-Location) 'release-notes.md'), $text + "`n", [Text.UTF8Encoding]::new($false))
-      - name: Publish the GitHub release (safe to rerun)
+          $text += "`n`nCheck each download against SHA256SUMS or its .sha256 file.`n"
+          [IO.File]::WriteAllText((Join-Path (Get-Location) 'release-notes.md'), $text, [Text.UTF8Encoding]::new($false))
+      - name: Publish the GitHub release (safe to rerun, never replaces a file)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = (Get-ChildItem out -File).FullName
-          gh release view "$env:GITHUB_REF_NAME" *> $null
+          $tag = $env:GITHUB_REF_NAME
+          $title = "sf-mod-build $env:VERSION"
+          $built = @(Get-ChildItem out -File)
+          # binaries first, SHA256SUMS and the .sha256 files last
+          $binaries = @($built | Where-Object { $_.Name -ne 'SHA256SUMS' -and $_.Extension -ne '.sha256' }).FullName
+          $sums = @($built | Where-Object { $_.Name -eq 'SHA256SUMS' -or $_.Extension -eq '.sha256' }).FullName
+          $out = (gh release view $tag --json assets -q '.assets[].name' 2>&1 | Out-String)
           if ($LASTEXITCODE -eq 0) {
-            gh release upload "$env:GITHUB_REF_NAME" $files --clobber
-            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
-            gh release edit "$env:GITHUB_REF_NAME" --notes-file release-notes.md --draft=false
+            $names = @($out -split "\r?\n" | Where-Object { $_ })
+            $have = @($built | Where-Object { $names -contains $_.Name }).Count
+            $missing = $built.Count - $have
+            if ($missing -gt 0 -and $have -gt 0) {
+              throw "The release has $have of the files and lacks $missing. Fix it by hand; a rerun never replaces a published file."
+            }
+            if ($missing -gt 0) {   # an earlier run made the release, then failed: upload everything, checksums last
+              gh release upload $tag $binaries
+              if ($LASTEXITCODE -ne 0) { throw "gh release upload (files) failed" }
+              gh release upload $tag $sums
+              if ($LASTEXITCODE -ne 0) { throw "gh release upload (checksums) failed" }
+            }
+            gh release edit $tag --title $title --notes-file release-notes.md --draft=false
             if ($LASTEXITCODE -ne 0) { throw "gh release edit failed" }
-          } else {
-            gh release create "$env:GITHUB_REF_NAME" $files --title "sf-mod-build $env:VERSION" --notes-file release-notes.md --verify-tag
+          } elseif ($out -match 'release not found') {
+            gh release create $tag ($binaries + $sums) --title $title --notes-file release-notes.md --verify-tag
             if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          } else {
+            throw "gh release view failed: $out"
           }
