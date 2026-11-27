@@ -584,4 +584,24 @@ public partial class SfModProjectTests
         Assert.Contains($"builder:  prebuilt {Path.Combine(t.Path, "Original", "MyMod.esm")}, copied into dist as MyMod.esm", o.ToString());
         Assert.DoesNotContain("runs:", o.ToString());
     }
+
+    [Fact]
+    public void CreationsOutInsideDistIsRefused()
+    {
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace("\"version\": \"0.1.0\",", "\"version\": \"0.1.0\", \"xbox\": true, \"creationsOut\": \"dist/creations\","));
+        Assert.Null(p);
+        Assert.Contains("creationsOut", All(problems));
+        Assert.Contains("inside dist", All(problems));
+    }
+
+    [Fact]
+    public void ZipFolderInsideStageIsRefused()
+    {
+        using var t = Mod();
+        var (p, problems) = Load(t, Good.Replace("\"zip\": {", "\"zip\": { \"folder\": \".build/stage/zips\","));
+        Assert.Null(p);
+        Assert.Contains("zip.folder", All(problems));
+        Assert.Contains("inside stage", All(problems));
+    }
 }

@@ -381,6 +381,12 @@ internal sealed class SfModProject
             var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 }, assets is { Textures.Count: > 0 },
                 dist, stage, creationsOut, packed);
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
+            // creationsOut inside dist: the next build's plugin step empties dist and would delete the user's files there
+            if (creationsOut != null && dist != null && (SamePath(creationsOut, dist) || IsUnder(creationsOut, dist)))
+                Error("creationsOut", $"it is {(SamePath(creationsOut, dist) ? "the same folder as" : "inside")} dist ({dist}), which the plugin step empties on every build, files you added included.", "use a folder of its own, for example \"creations-out\".");
+            // zip.folder in stage: every build empties stage and the zips would go with it
+            if (zipFolder != null && stage != null && (SamePath(zipFolder, stage) || IsUnder(zipFolder, stage)))
+                Error("zip.folder", $"it is {(SamePath(zipFolder, stage) ? "the same folder as" : "inside")} stage ({stage}), which every build empties.", "use a folder outside dist and stage, for example the mod's own folder (the default).");
             var zipSplit = true;
             if (root.TryGetProperty("zip", out var zsec) && zsec.ValueKind == JsonValueKind.Object && zsec.TryGetProperty("split", out var zs) && zs.ValueKind != JsonValueKind.Null)
             {

@@ -174,7 +174,7 @@ internal static class Plugin
     /// <summary>Why emptying dist would be unsafe, or null.</summary>
     public static string? UnsafeDist(SfModProject project, IEnumerable<string> gameFolders)
     {
-        var keep = new List<string> { project.Folder, project.Stage };
+        var keep = new List<string> { project.Folder, project.Stage, project.CreationsOut };
         keep.AddRange(project.BuilderFolders);
         keep.AddRange(project.AllScriptSources);
         return Common.UnsafeToEmpty("dist", project.Dist, project.Folder, keep, gameFolders);
