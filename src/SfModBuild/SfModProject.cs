@@ -798,6 +798,16 @@ internal sealed class SfModProject
                 Error("voice.source", $"the folder {source} isn't there.", "give the folder that holds the WAVs (<voice type>\\<FILENAME>.wav), relative to sfmod.json.");
                 source = null;
             }
+            // the WAVs must not sit where a build empties folders (dist, stage, creations-out) or where pack would
+            // ship them as loose files (assets.source)
+            if (source != null)
+                foreach (var (name, path) in outputs.Concat(packed))
+                    if (SamePath(source, path) || IsUnder(source, path) || IsUnder(path, source))
+                    {
+                        Error("voice.source", $"{source} is, holds or is inside {name} ({path}), so the build would {(packed.Any(x => x.Path == path) ? "pack the WAVs into the archive as they are" : "delete the WAVs")}.", "keep the WAVs in a folder of their own, for example \"Voice\".");
+                        source = null;
+                        break;
+                    }
             var output = Folder(v, "out", Path.Combine(".build", "voice"), "voice.out");
             if (output != null)
             {

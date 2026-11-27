@@ -679,8 +679,11 @@ with `sf-mod-build voice`. Here is what it does:
   setting "Voice Conversion" (Wwise Vorbis, mono, like the game's own lines).
 - LipGenerator makes each line's animation set from the WAV, the line's text and the face set, and `ffxc` turns them
   into `.ffxanim` files. The face set is `StarfieldHumanFemale` or `StarfieldHumanMale`, from the voice type's sex.
-- Both files go into `<out>\data\Sound\Voice\<plugin>\<voice type>\`. Files there that no current line has are
-  deleted.
+- Both files go into `<out>\data\Sound\Voice\<plugin>\<voice type>\`. Files there that no current line with a WAV
+  has are deleted, so keep the WAVs: they are the source, and a line whose WAV is gone loses its files at the next
+  run.
+- A line with no text (a sigh or a laugh) gets its `.wem` but no lip file, with a WARNING, because LipGenerator needs
+  the words.
 - A line whose WAV, text and face set haven't changed since the last run is skipped, so a rerun with nothing new
   doesn't need Wwise.
 
@@ -688,7 +691,7 @@ The fields:
 
 | Field | What it is |
 |---|---|
-| `source` (required) | The folder of WAVs, `<voice type>\<FILENAME>.wav`, or Voice Cloner's output folder. It is only read, so it may be anywhere. |
+| `source` (required) | The folder of WAVs, `<voice type>\<FILENAME>.wav`, or Voice Cloner's output folder. It is only read, so it may be anywhere apart from dist, stage, creations-out, `assets.source` and `voice.out` (a build empties the first three, and pack would ship the WAVs from `assets.source`). |
 | `faces` | The face set per voice type, `"female"`, `"male"` or `"none"` (no lip file, for a robot voice): `{ "npcfmyvoice": "female" }`. The default is the voice type's sex. A voice type whose sex isn't known gets no lip files, with a WARNING. |
 | `out` | The voice step's own folder (default `.build/voice`). It must be inside the mod's folder and apart from dist, stage, creations-out and the folders that are packed. |
 | `wwiseProject` | Your own Wwise project (a `.wproj` or the folder that holds it), for example the copy you registered with Audiokinetic. The default is a copy of the Creation Kit's `Tools\wwise\Starfield` in `<out>\wwise`, made again when the Creation Kit's project changes. |

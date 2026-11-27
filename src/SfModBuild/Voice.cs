@@ -9,7 +9,8 @@
 //   4. The Creation Kit's LipGenerator and FaceFX ffxc make the .ffxanim lip file of each line, with the face set of
 //      the voice type's sex (voice.faces overrides it; "none" makes no lip file).
 //   5. Both go into voice.out\data\Sound\Voice\<plugin>\<voice type>\, which pack puts in "<plugin> - Main.ba2"
-//      (uncompressed). Files there that no current line has are deleted.
+//      (uncompressed). Files there that no current line with a WAV has are deleted, so the WAVs must stay.
+//      A line with no text gets its .wem but no lip file (LipGenerator needs the words).
 // A line whose WAV, text and face set haven't changed since the last run is skipped (voice.out\cache.json), so a
 // rerun needs no Wwise when nothing changed. Wwise is never shipped or bundled: the voice step uses the modder's own
 // install, found by --wwise, WWISEROOT, or the Audiokinetic folder on each drive.
@@ -119,6 +120,11 @@ internal static class Voice
             }
             faces[vt] = face;
         }
+        // LipGenerator needs the line's words, so a line with no text (a sigh, a laugh) gets its .wem but no lip file
+        string FaceOf(Line l) => l.Text.Length == 0 ? "none" : faces[l.VoiceType];
+        var noText = work.Where(w => w.Line.Text.Length == 0 && faces[w.Line.VoiceType] != "none").Select(w => w.Line.Key).ToList();
+        if (noText.Count > 0)
+            stdout.WriteLine($"WARNING  {noText.Count} line(s) have no text, so they get a .wem but no lip file: {Few(noText)}. Fix: give the line its words in the plugin if the face should move.");
 
         // 4. which lines need making
         var cachePath = Path.Combine(voice.Out, "cache.json");
@@ -127,7 +133,7 @@ internal static class Voice
         var todo = new List<(Line Line, string Wav, string Face)>();
         foreach (var (l, wav) in work)
         {
-            var face = faces[l.VoiceType];
+            var face = FaceOf(l);
             string hash;
             try { hash = Hash(wav, l.Text, face, voice.Conversion); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -156,12 +162,12 @@ internal static class Voice
             if (code != ExitCodes.Ok) return code;
         }
 
-        // 5. files no current line has are left from an earlier build: deleted
+        // 5. files no current line with a WAV has are left from an earlier build: deleted
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (l, _) in work)
         {
             keep.Add(Path.Combine(voice.Data, Rel(l, ".wem")));
-            if (faces[l.VoiceType] != "none") keep.Add(Path.Combine(voice.Data, Rel(l, ".ffxanim")));
+            if (FaceOf(l) != "none") keep.Add(Path.Combine(voice.Data, Rel(l, ".ffxanim")));
         }
         var removed = 0;
         try
@@ -183,7 +189,7 @@ internal static class Voice
             stdout.WriteLine($"RESULT: CANNOT MAKE VOICE ({voice.Data} can't be tidied: {e.Message}. Fix: close any program using files there and run again).");
             return ExitCodes.BadInput;
         }
-        var lipCount = work.Count(w => faces[w.Line.VoiceType] != "none");
+        var lipCount = work.Count(w => FaceOf(w.Line) != "none");
         stdout.WriteLine($"RESULT: OK, {work.Count} voice line(s) in {voice.Data} ({todo.Count} made, {work.Count - todo.Count} unchanged; {lipCount} with a lip file{(removed > 0 ? $"; {removed} old file(s) deleted" : "")})");
         return ExitCodes.Ok;
     }
@@ -294,11 +300,6 @@ internal static class Voice
             if (!VoiceTypeName.IsMatch(line.VoiceType) || !FileNumber.IsMatch(line.File))
             {
                 skipped.Add($"the voice-lines row \"{Get(vt)}\" \"{Get(fn)}\" was left out: a voice type must be letters, digits and _, and a file number 8 hex digits.");
-                continue;
-            }
-            if (line.Text.Length == 0)
-            {
-                skipped.Add($"the voice-lines row {line.Key} was left out: it has no text, so no lip file can be made for it.");
                 continue;
             }
             if (seen.Add(line.Key)) list.Add(line);

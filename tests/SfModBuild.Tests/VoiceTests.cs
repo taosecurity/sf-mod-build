@@ -203,6 +203,27 @@ public class VoiceTests
     }
 
     [Fact]
+    public void ALineWithNoTextGetsItsWemButNoLipFile()
+    {
+        using var r = new Rig();
+        r.Tsv += Row("npcfmyvoice", "0001A2B5", "");
+        r.Wav("npcfmyvoice", "0001A2B5", "a sigh");
+        Assert.Equal(0, r.Run(out var o));
+        Assert.Contains("WARNING  1 line(s) have no text", o);
+        Assert.DoesNotContain("match no line", o);
+        Assert.Equal("wem of a sigh", File.ReadAllText(r.Data("npcfmyvoice", "0001A2B5.wem")));
+        Assert.False(File.Exists(r.Data("npcfmyvoice", "0001A2B5.ffxanim")));
+        Assert.True(File.Exists(r.Data("npcfmyvoice", "0001A2B3.ffxanim")));
+        Assert.Equal(2, r.Ran("LipGenerator"));
+        Assert.Contains("3 voice line(s)", o);
+        Assert.Contains("2 with a lip file", o);
+        // a rerun keeps it as unchanged
+        Assert.Equal(0, r.Run(out o));
+        Assert.Contains("0 to make, 3 unchanged", o);
+        Assert.True(File.Exists(r.Data("npcfmyvoice", "0001A2B5.wem")));
+    }
+
+    [Fact]
     public void AMaleVoiceUsesTheMaleFaceSet()
     {
         using var r = new Rig();
@@ -272,10 +293,12 @@ public class VoiceTests
                    + Row("..\\evil", "0000000B", "x") + Row("npcfa", "12345", "short number") + Row("npcfa", "0000000C", "");
         var lines = Voice.ParseList(text, out var error, out var skipped)!;
         Assert.Null(error);
-        var one = Assert.Single(lines);
+        Assert.Equal(2, lines.Count);   // the row with no text stays: it still needs its .wem
+        var one = lines[0];
         Assert.Equal("Say \"hi\"\tnow", one.Text);
         Assert.Equal("female", one.Sex);
-        Assert.Equal(3, skipped.Count);
+        Assert.Equal("", lines[1].Text);
+        Assert.Equal(2, skipped.Count);
         Assert.Null(Voice.ParseList("VOICE TYPE\tFILENAME\r\n", out error, out _));
         Assert.Contains("RESPONSE TEXT", error);
     }
@@ -308,6 +331,8 @@ public class VoiceTests
     [InlineData("\"voice\": { \"source\": \"Voice\", \"faces\": { \"npcfa\": \"robot\" } }, \"x\": 1,", "isn't \"female\", \"male\" or \"none\"")]
     [InlineData("\"voice\": { \"source\": \"NoSuchFolder\" }, \"x\": 1,", "isn't there")]
     [InlineData("\"voice\": { \"source\": \"Voice\", \"wwiseProject\": \"Voice\" }, \"x\": 1,", "holds no .wproj")]
+    [InlineData("\"assets\": { \"source\": \"Voice\" },", "pack the WAVs into the archive")]
+    [InlineData("\"stage\": \"Voice/stage\",", "delete the WAVs")]
     public void BadVoiceSectionsAreProblems(string insert, string expected)
     {
         using var t = new TempDir();
