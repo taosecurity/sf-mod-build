@@ -331,8 +331,9 @@ public class VoiceTests
     [InlineData("\"voice\": { \"source\": \"Voice\", \"faces\": { \"npcfa\": \"robot\" } }, \"x\": 1,", "isn't \"female\", \"male\" or \"none\"")]
     [InlineData("\"voice\": { \"source\": \"NoSuchFolder\" }, \"x\": 1,", "isn't there")]
     [InlineData("\"voice\": { \"source\": \"Voice\", \"wwiseProject\": \"Voice\" }, \"x\": 1,", "holds no .wproj")]
-    [InlineData("\"assets\": { \"source\": \"Voice\" },", "pack the WAVs into the archive")]
-    [InlineData("\"stage\": \"Voice/stage\",", "delete the WAVs")]
+    [InlineData("\"assets\": { \"source\": \"Voice\" },", "put the WAVs into the archive")]
+    [InlineData("\"stage\": \"Voice\",", "the WAVs would be deleted")]
+    [InlineData("\"archives\": [ { \"suffix\": \"Voices\", \"source\": \"Voice\" } ],", "put the WAVs into the archive")]
     public void BadVoiceSectionsAreProblems(string insert, string expected)
     {
         using var t = new TempDir();
@@ -345,6 +346,32 @@ public class VoiceTests
         var problems = new List<ProjectProblem>();
         Assert.Null(SfModProject.Load(t.File("sfmod.json", json), problems));
         Assert.Contains(problems, x => !x.IsWarning && (x.Problem + x.Field).Contains(expected));
+    }
+
+    [Fact]
+    public void AVoiceSourceThatOnlyHoldsAPackedFolderIsAllowed()
+    {
+        using var t = new TempDir();
+        t.File(Path.Combine("Original", "MyMod.esm"));
+        t.File(Path.Combine("Voice", "npcfa", "00000001.wav"));
+        t.File(Path.Combine("Voice", "Assets", "meshes", "a.nif"));
+        var json = Json.Replace("\"voice\"", "\"assets\": { \"source\": \"Voice/Assets\" }, \"voice\"");
+        var problems = new List<ProjectProblem>();
+        Assert.NotNull(SfModProject.Load(t.File("sfmod.json", json), problems));
+        Assert.DoesNotContain(problems, x => !x.IsWarning);
+    }
+
+    [Fact]
+    public void AVoiceTypeWithOnlyLinesWithoutTextGetsNoSexWarning()
+    {
+        using var r = new Rig();
+        r.Tsv = Header + Row("oddvoice", "00000012", "", sex: "");
+        r.Wav("oddvoice", "00000012", "a laugh");
+        Assert.Equal(0, r.Run(out var o));
+        Assert.DoesNotContain("no known sex", o);
+        Assert.Contains("1 line(s) have no text", o);
+        Assert.True(File.Exists(r.Data("oddvoice", "00000012.wem")));
+        Assert.Equal(0, r.Ran("LipGenerator"));
     }
 
     [Fact]

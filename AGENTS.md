@@ -167,7 +167,8 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   and a `zip.archives` name that starts with no plugin's name.
 - Optional `zip.split` (default `true`): with `parts`, one zip per plugin; `false` keeps one zip for all of them.
 - Optional `voice`: `{ "source", "faces", "out", "wwiseProject", "conversion" }`. `source` (required) is the WAV
-  folder (only read; refused at or inside dist, stage, creations-out, `assets.source` or `voice.out`, and it must
+  folder (only read; refused at or inside dist, stage, `creationsOut`, `voice.out`, `assets.source`,
+  `assets.xboxTextures` or an `archives` source, and it must
   keep the WAVs: a line whose WAV is gone loses its made files at the next run); `faces` maps a voice type EditorID to `"female"`, `"male"` or `"none"` (default: the voice
   type's sex from voice-lines; unknown sex gets no lip files and a WARNING); `out` (default `.build/voice`) must be
   inside the mod's folder and apart from dist, stage, creations-out and every packed folder; `wwiseProject` is the

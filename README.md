@@ -691,7 +691,7 @@ The fields:
 
 | Field | What it is |
 |---|---|
-| `source` (required) | The folder of WAVs, `<voice type>\<FILENAME>.wav`, or Voice Cloner's output folder. It is only read, so it may be anywhere apart from dist, stage, creations-out, `assets.source` and `voice.out` (a build empties the first three, and pack would ship the WAVs from `assets.source`). |
+| `source` (required) | The folder of WAVs, `<voice type>\<FILENAME>.wav`, or Voice Cloner's output folder. It is only read, so it may be anywhere except at or inside dist, stage, `creationsOut` or `voice.out` (a build empties them) or a folder pack ships as it is (`assets.source`, `assets.xboxTextures` or an `archives` source). |
 | `faces` | The face set per voice type, `"female"`, `"male"` or `"none"` (no lip file, for a robot voice): `{ "npcfmyvoice": "female" }`. The default is the voice type's sex. A voice type whose sex isn't known gets no lip files, with a WARNING. |
 | `out` | The voice step's own folder (default `.build/voice`). It must be inside the mod's folder and apart from dist, stage, creations-out and the folders that are packed. |
 | `wwiseProject` | Your own Wwise project (a `.wproj` or the folder that holds it), for example the copy you registered with Audiokinetic. The default is a copy of the Creation Kit's `Tools\wwise\Starfield` in `<out>\wwise`, made again when the Creation Kit's project changes. |

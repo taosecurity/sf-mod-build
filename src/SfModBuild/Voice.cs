@@ -107,11 +107,13 @@ internal static class Voice
         if (orphans.Count > 0)
             stdout.WriteLine($"WARNING  {orphans.Count} WAV(s) in {wavRoot} match no line of the plugin and aren't used: {Few(orphans)}. Fix: check the voice type folder and the file number, or delete them.");
 
-        // 3. the face set of each voice type
+        // 3. the face set of each voice type that has a line with text (LipGenerator needs the line's words, so a
+        // line with no text, such as a sigh or a laugh, gets its .wem but no lip file)
         var faces = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var vt in work.Select(w => w.Line.VoiceType).Distinct(StringComparer.OrdinalIgnoreCase))
+        var spoken = work.Where(w => w.Line.Text.Length > 0).ToList();
+        foreach (var vt in spoken.Select(w => w.Line.VoiceType).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var sex = work.First(w => w.Line.VoiceType == vt).Line.Sex.ToLowerInvariant();
+            var sex = spoken.First(w => w.Line.VoiceType == vt).Line.Sex.ToLowerInvariant();
             var face = voice.Faces.TryGetValue(vt, out var given) ? given : sex is "female" or "male" ? sex : null;
             if (face == null)
             {
@@ -120,9 +122,8 @@ internal static class Voice
             }
             faces[vt] = face;
         }
-        // LipGenerator needs the line's words, so a line with no text (a sigh, a laugh) gets its .wem but no lip file
         string FaceOf(Line l) => l.Text.Length == 0 ? "none" : faces[l.VoiceType];
-        var noText = work.Where(w => w.Line.Text.Length == 0 && faces[w.Line.VoiceType] != "none").Select(w => w.Line.Key).ToList();
+        var noText = work.Where(w => w.Line.Text.Length == 0 && !(voice.Faces.TryGetValue(w.Line.VoiceType, out var f) && f == "none")).Select(w => w.Line.Key).ToList();
         if (noText.Count > 0)
             stdout.WriteLine($"WARNING  {noText.Count} line(s) have no text, so they get a .wem but no lip file: {Few(noText)}. Fix: give the line its words in the plugin if the face should move.");
 
