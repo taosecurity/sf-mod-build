@@ -5,12 +5,14 @@ using System.Text.RegularExpressions;
 
 namespace SfModBuild;
 
-internal sealed record DoctorItem(string Name, bool Found, bool Required, string? Path, string For, string? HowToGet, string? Detail = null);
+/// <summary>One thing doctor looked for. VoiceOnly: needed only by a project with a voice section, so a missing one
+/// is a note and doesn't count as a warning.</summary>
+internal sealed record DoctorItem(string Name, bool Found, bool Required, string? Path, string For, string? HowToGet, string? Detail = null, bool VoiceOnly = false);
 
 internal sealed record DoctorReport(GameInstall? Game, List<GameInstall> OtherInstalls, List<DoctorItem> Items, List<SetupCheck> Setup)
 {
     public int MissingRequired => Items.Count(i => i.Required && !i.Found);
-    public int MissingOptional => Items.Count(i => !i.Required && !i.Found);
+    public int MissingOptional => Items.Count(i => !i.Required && !i.Found && !i.VoiceOnly);
     public int SetupWarnings => Setup.Count(s => !s.Ok);
 }
 
@@ -110,6 +112,13 @@ internal static class Doctor
 
         items.Add(DotnetItem(env));
         items.Add(CheckerItem(env, checkerGiven));
+        // only for a project with a voice section (new voice lines from WAVs)
+        var wwise = Voice.FindWwise(null, env, out _);
+        var wwiseVersion = wwise != null ? Voice.WwiseVersion(wwise) : null;
+        items.Add(new DoctorItem("Wwise (voice only)", wwise != null, false, wwise, "converts new voice lines from WAV to .wem (sf-mod-build voice)", Voice.WwiseHowTo,
+            wwiseVersion == null ? null : wwiseVersion is { Major: 2021, Minor: 1 } ? $"Wwise {wwiseVersion}" : $"Wwise {wwiseVersion}; the Creation Kit's project is made for 2021.1, so use 2021.1 if voice fails", VoiceOnly: true));
+        items.Add(new DoctorItem("LipGenerator and ffxc (voice only)", game != null && File.Exists(Tool(System.IO.Path.Combine("Tools", "LipGenerator", "LipGenerator.exe"))) && File.Exists(Tool(System.IO.Path.Combine("Tools", "FaceFX", "ffxc.exe"))),
+            false, game != null ? Tool(System.IO.Path.Combine("Tools", "LipGenerator")) : null, "make the .ffxanim lip files of new voice lines (sf-mod-build voice)", CkHowTo, VoiceOnly: true));
         foreach (var i in items) Log.Write($"{(i.Found ? "found" : "missing")}: {i.Name} {i.Path ?? ""} {i.Detail ?? ""}");
         return new DoctorReport(game, others, items, SetupChecks.Run(game, myGamesOption, env));
     }
@@ -166,9 +175,11 @@ internal static class Doctor
     {
         foreach (var i in r.Items)
         {
-            var label = i.Found ? "FOUND  " : i.Required ? "MISSING" : "WARNING";
+            var label = i.Found ? "FOUND  " : i.Required ? "MISSING" : i.VoiceOnly ? "note   " : "WARNING";
             o.WriteLine($"{label}  {i.Name}: {(i.Found ? i.Path : i.Path != null ? $"not at {i.Path}" : "not found")}{(i.Found && i.Detail != null ? $" ({i.Detail})" : "")}");
-            if (!i.Found)
+            if (!i.Found && i.VoiceOnly)
+                o.WriteLine($"         needed only for a project with a voice section; {i.For}. How to get it: {i.HowToGet}");
+            else if (!i.Found)
             {
                 o.WriteLine($"         what it is for: {i.For}");
                 if (i.HowToGet != null) o.WriteLine($"         how to get it: {i.HowToGet}");

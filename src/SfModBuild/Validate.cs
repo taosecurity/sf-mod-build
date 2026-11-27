@@ -62,6 +62,12 @@ internal static class Validate
                 + (p.Assets.UncompressedMain ? " (sound or lip files, so Main is packed uncompressed)" : ""));
             if (p.Assets.XboxTextures != null) o.WriteLine($"          Xbox textures from {p.Assets.XboxTextures}: {p.Assets.XboxTextureFiles.Count} file(s)");
         }
+        if (p.Voice != null)
+        {
+            o.WriteLine($"voice:    WAVs from {Voice.WavRoot(p.Voice.Source, p.Plugin)}: {Voice.IndexWavs(Voice.WavRoot(p.Voice.Source, p.Plugin)).Count} line WAV(s); made files in {p.Voice.Data}: {p.Voice.Files.Count} (packed into Main, uncompressed)");
+            o.WriteLine($"          Wwise project {p.Voice.WwiseProject ?? "a copy of the Creation Kit's Tools\\wwise\\Starfield"}, conversion \"{p.Voice.Conversion}\"" +
+                (p.Voice.Faces.Count > 0 ? $"; faces {string.Join(", ", p.Voice.Faces.Select(f => $"{f.Key} {f.Value}"))}" : ""));
+        }
         foreach (var a in p.Archives)
             o.WriteLine(a.File != null ? $"archive:  \"{a.Name}\" copied from {a.File}"
                 : $"archive:  \"{a.Name}\" packed from {a.Source}" + (a.Uncompressed ? ", uncompressed" : "") + (a.Dds ? ", format DDS" : ""));

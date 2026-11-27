@@ -118,6 +118,8 @@ One `sf-mod-build build` runs five steps in order and stops at the first one tha
    `Debug.Trace` logging keeps working).
 2. It runs your mod's Mutagen builder (for example one made with BuildKit) to write the plugin, or a command of your
    own that writes it, or copies a plugin you already made.
+   With a voice section, it then makes the voice and lip files of your new lines from WAVs, with **your own**
+   Wwise and the Creation Kit's lip tools (see [New voice lines](#new-voice-lines-wav-to-wem-and-lip-files)).
 3. It packs the compiled scripts and your loose files (meshes, materials, sounds, terrain) into `<Plugin> - Main.ba2`
    and your textures into `<Plugin> - Textures.ba2`, with **your own** Creation Kit Archive2 (and the Xbox archives
    for Creations, if you ask for them).
@@ -152,7 +154,7 @@ and press Enter. A Command Prompt window opens in that folder, ready for the com
 
 Pick one way to install the tool:
 
-- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.5.2.nupkg` from the
+- **As a dotnet tool** (needs the .NET SDK, which you need anyway): download `sf-mod-build.0.6.0.nupkg` from the
   [release](https://github.com/taosecurity/sf-mod-build/releases) into a folder of its own, open a Command Prompt
   in that folder, and run:
 
@@ -161,14 +163,14 @@ Pick one way to install the tool:
   ```
 
   Update later with `dotnet tool update --global sf-mod-build --add-source <that folder>`.
-- **As a program**: download `sf-mod-build-0.5.2-win-x64.zip` from the release and check it against
-  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.5.2-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
+- **As a program**: download `sf-mod-build-0.6.0-win-x64.zip` from the release and check it against
+  `SHA256SUMS` (`certutil -hashfile sf-mod-build-0.6.0-win-x64.zip SHA256` prints the hash; in Git Bash or on Linux,
   `sha256sum -c SHA256SUMS` in the download folder checks every file, from 0.2.1 on). Right-click the zip,
   choose **Extract All...**, and put that folder on PATH (or call `sf-mod-build.exe` by its full path).
 - **From source**: `dotnet build src\SfModBuild -c Release`; the program is
   `src\SfModBuild\bin\Release\net9.0\sf-mod-build.exe`.
 
-Then install the starter template. Unzip `sf-mod-build-template-0.5.2.zip` from the release into a folder of its
+Then install the starter template. Unzip `sf-mod-build-template-0.6.0.zip` from the release into a folder of its
 own, for example `C:\Tools\sfmod-template`, and give that folder to `dotnet new install`:
 
 ```
@@ -213,7 +215,7 @@ You get these files:
 - `sfmod.json`, the project file.
 - A `Builder` project that makes a small light master with one quest. It uses the nuget packages
   `Taosecurity.Starfield.BuildKit` 0.6.0 and `Mutagen.Bethesda.Starfield` 0.54.4, both pinned exactly: 0.6.0 is the
-  BuildKit version sf-mod-build 0.5.2 was tested with. The starter builder needs no change for 0.6.0, and 0.6.0 adds
+  BuildKit version sf-mod-build 0.6.0 was tested with. The starter builder needs no change for 0.6.0, and 0.6.0 adds
   quest helpers you can use for the quests you add (the starter's own quest doesn't use them).
 - A commented-out `"assets"` line in `sfmod.json`, for when you add meshes, textures or sounds (see
   [Loose files](#loose-files-meshes-textures-and-sounds)).
@@ -235,10 +237,11 @@ when it isn't found by itself. Every command has `--help`.
 | `sf-mod-build validate [<sfmod.json>]` | Checks the project file and prints what a build would use. Each problem names the field and the fix. |
 | `sf-mod-build compile [<sfmod.json>] [--game <folder>]` | Compiles the scripts into `<stage>\Scripts` (stage is emptied first), and each part's scripts into `<stage>\parts\<part>\Scripts` (see [More plugins](#more-plugins-parts)). Never `-release`: asking for it is refused with the reason. |
 | `sf-mod-build plugin [<sfmod.json>] [--game <folder>]` | Deletes what earlier builds made in dist (see [What dist may hold](#what-dist-may-hold)) and makes the plugin there with the builder: it runs `dotnet run -c Release --project <builder> -- <args>` (`builder.project`), runs your own command (`builder.command` followed by `builder.args`), or copies a ready plugin (`builder.prebuilt`). See [Other kinds of builder](#other-kinds-of-builder). It stops (exit 1) when a plugin listed in `parts` isn't in dist. Then it runs your `steps.afterPlugin` commands (see [Your own steps](#your-own-steps)). |
+| `sf-mod-build voice [<sfmod.json>] [--game <folder>] [--checker <exe>] [--wwise <folder>] [--masters-dir <folder>]...` | Makes the `.wem` voice files and `.ffxanim` lip files of the plugin's new lines from your WAVs, into `<voice.out>\data` (see [New voice lines](#new-voice-lines-wav-to-wem-and-lip-files)). It needs sf-mod-check 0.21.0 or later, your own Wwise 2021.1 and the Creation Kit. With no voice section it does nothing. |
 | `sf-mod-build pack [<sfmod.json>] [--game <folder>]` | Packs the compiled scripts and the general loose files into `<plugin> - Main.ba2` and the textures into `<plugin> - Textures.ba2`, in dist; with `"xbox": true` it also fills creations-out with dist's files plus `<plugin> - Main_xbox.ba2` and `<plugin> - Textures_xbox.ba2`, first deleting only what earlier builds made there (see [What creations-out may hold](#what-creations-out-may-hold)). It also packs each part's scripts into `<part> - Main.ba2` and makes each archive in the `archives` list (see [More archives](#more-archives-voices-and-ready-archives)). Then it runs your `steps.afterPack` commands. |
 | `sf-mod-build zip [<sfmod.json>]` | Writes the zip: dist's files plus `zip.files`, sorted, with fixed timestamps, so the same inputs give the same bytes. Never `.psc`. A `.ba2` in dist that the build doesn't make and `zip.archives` doesn't list stops it (exit 2, naming the file); so does an archive from `archives` or `zip.archives`, or a plugin or archive of `parts`, that isn't in dist, and a plugin in dist that is neither `plugin` nor a part (unless `zip.split` is `false`). `zip.files` takes no archives. A mod with `parts` gets one zip per plugin (see [More plugins](#more-plugins-parts)). |
 | `sf-mod-build check [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | Runs `<checker> release <zip> --data <game>\Data` on each zip, and reports the worst result. A part's zip also gets `--masters-dir <dist>`, because its master (the main plugin) is in the main zip. Each `--masters-dir` (it can be given more than once) is passed to the checker, for a master plugin that isn't in the Data folder, such as another mod's folder in your mod manager; a folder that isn't there stops it with exit 2. No checker is a WARNING, or a failure with `--require-check`. |
-| `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check]` | compile, plugin, pack, zip and check in order; stops at the first step that fails. |
+| `sf-mod-build build [<sfmod.json>] [--game <folder>] [--checker <exe>] [--masters-dir <folder>]... [--wwise <folder>] [--require-check]` | compile, plugin, voice (only with a voice section), pack, zip and check in order; stops at the first step that fails. |
 | `sf-mod-build --version` | The version. |
 
 Options for every command: `--verbose` (troubleshooting log on stderr), `--log <file>` (the same log with times, in
@@ -605,6 +608,107 @@ RESULT: OK, 2 zips written in C:\Mods\MyMod (MyMod-0.1.0.zip: 4 files, 2948 byte
   them adds to dist or changes there goes into the zip but not into creations-out. Put a command whose output
   must ship on both in `steps.afterPlugin` instead. A file an afterPack command writes into creations-out itself
   isn't on creations-out's made list, so the next `pack` names it and stops: have the command write elsewhere.
+
+## New voice lines: WAV to .wem and lip files
+
+The `voice` step turns one WAV per line into the game's voice file (`.wem`) and lip file (`.ffxanim`), without
+opening the Creation Kit. It works for every new line your plugin adds, and `pack` puts the results in
+`<plugin> - Main.ba2`, uncompressed.
+
+What you need besides the usual tools:
+
+- **sf-mod-check 0.21.0 or later**, which lists the plugin's voiced lines (`voice-lines`).
+- **Audiokinetic Wwise 2021.1** (for example 2021.1.14.8108, the version the Creation Kit's project is made for),
+  installed with the Audiokinetic Launcher from [audiokinetic.com](https://www.audiokinetic.com) with Authoring and
+  the Windows platform. sf-mod-build never ships Wwise: it uses your own install. Wwise's license is
+  Audiokinetic's: register your mod there as a free non-commercial project, and credit Audiokinetic in your README.
+- **The Creation Kit**, whose `Tools` folder holds the Wwise project (`Tools\wwise\Starfield`), LipGenerator and FaceFX's
+  `ffxc`.
+- **The WAVs**, for example from [Starfield Voice Cloner](https://github.com/Sonic1SVK/Starfield-Voice-Cloner) or
+  your own recordings.
+
+The steps:
+
+1. Build the plugin, then list its lines in the Creation Kit's export format, which Voice Cloner reads:
+
+   ```
+   sf-mod-build plugin
+   sf-mod-check voice-lines dist\MyMod.esm --out MyMod-lines.tsv
+   ```
+
+2. Make one WAV per line, named `<FILENAME>.wav` in a folder named after its voice type:
+   `Voice\npcfmyvoice\0001A2B3.wav`. Voice Cloner's own output folder works as it is: it has
+   `Sound\Voice\MyMod.esm\` above the voice type folders, and the voice step looks there first.
+3. Add the voice section to `sfmod.json`, then build:
+
+   ```jsonc
+   "voice": { "source": "Voice" }
+   ```
+
+   ```
+   sf-mod-build build
+   ```
+
+Here is a real run of the voice step alone on a companion plugin with 564 voiced lines, where only one new line has
+a WAV so far (the plugin and voice type renamed):
+
+```
+> sf-mod-build voice
+listing  the voiced lines of MyMod.esm with sf-mod-check.exe voice-lines
+WARNING  563 line(s) have no WAV in C:\Mods\MyMod\Voice, so they stay silent: npcfmyvoice\00007B22, npcfmyvoice\0000B1DC, npcfmyvoice\0000D08C, npcfmyvoice\000207B8, npcfmyvoice\00023DCB and 558 more. Fix: make each one as <voice type>\<FILENAME>.wav (the voice-lines list is C:\Mods\MyMod\.build\voice\lines.tsv).
+lines    564 voiced line(s): 1 with a WAV (1 to make, 0 unchanged), 563 without
+wwise    converting 1 WAV(s) with C:\Audiokinetic\Wwise2021.1.14.8108\Authoring\x64\Release\bin\WwiseConsole.exe
+lips     making 1 lip file(s) with LipGenerator and ffxc
+RESULT: OK, 1 voice line(s) in C:\Mods\MyMod\.build\voice\data (1 made, 0 unchanged; 1 with a lip file)
+```
+
+The 563 warnings are expected in this test: the plugin's other lines keep the sound files the mod already ships,
+which this test project doesn't list in `assets.source` (with them there, the `lines` line counts them as "already in
+assets.source" and there is no warning). The same Wwise, LipGenerator and ffxc steps, run by hand, made a line that
+played in real dialogue in game with the lips in time, and this run's `.wem` is byte for byte that line's file.
+
+`build` runs the voice step between `plugin` and `pack` when the project has a voice section. You can run it alone
+with `sf-mod-build voice`. Here is what it does:
+
+- It runs `sf-mod-check voice-lines` on `dist\<plugin>` (with `--data` set to the game's Data folder and your
+  `--masters-dir` folders) into `<out>\lines.tsv`.
+- It matches each line with its WAV. A line with no WAV is a WARNING, because it stays silent in game, unless
+  `assets.source` already has its `.wem` under `Sound\Voice\<plugin>\<voice type>\`. A WAV that matches no line is
+  a WARNING and isn't used.
+- Wwise converts every new or changed WAV in one run (`WwiseConsole convert-external-source`), with the conversion
+  setting "Voice Conversion" (Wwise Vorbis, mono, like the game's own lines).
+- LipGenerator makes each line's animation set from the WAV, the line's text and the face set, and `ffxc` turns them
+  into `.ffxanim` files. The face set is `StarfieldHumanFemale` or `StarfieldHumanMale`, from the voice type's sex.
+- Both files go into `<out>\data\Sound\Voice\<plugin>\<voice type>\`. Files there that no current line has are
+  deleted.
+- A line whose WAV, text and face set haven't changed since the last run is skipped, so a rerun with nothing new
+  doesn't need Wwise.
+
+The fields:
+
+| Field | What it is |
+|---|---|
+| `source` (required) | The folder of WAVs, `<voice type>\<FILENAME>.wav`, or Voice Cloner's output folder. It is only read, so it may be anywhere. |
+| `faces` | The face set per voice type, `"female"`, `"male"` or `"none"` (no lip file, for a robot voice): `{ "npcfmyvoice": "female" }`. The default is the voice type's sex. A voice type whose sex isn't known gets no lip files, with a WARNING. |
+| `out` | The voice step's own folder (default `.build/voice`). It must be inside the mod's folder and apart from dist, stage, creations-out and the folders that are packed. |
+| `wwiseProject` | Your own Wwise project (a `.wproj` or the folder that holds it), for example the copy you registered with Audiokinetic. The default is a copy of the Creation Kit's `Tools\wwise\Starfield` in `<out>\wwise`, made again when the Creation Kit's project changes. |
+| `conversion` | The Wwise conversion setting (default `"Voice Conversion"`). |
+
+Wwise is found with `--wwise <folder>` (the Wwise folder, such as `C:\Audiokinetic\Wwise2021.1.14.8108`, or its
+`WwiseConsole.exe`), else the `WWISEROOT` variable that the Audiokinetic Launcher sets, else the newest 2021.1 in an
+`Audiokinetic` folder on each drive or in Program Files. Another version gets a WARNING, because it may refuse or
+change the Creation Kit's project. `doctor` lists Wwise, LipGenerator and ffxc as notes, since only a project with a
+voice section needs them.
+
+Limits of this version:
+
+- PC only: the voice section can't be used with `"xbox": true` (`validate` reports it as a PROBLEM), because a PC
+  `.wem` plays silent on Xbox and PlayStation 5.
+- Only the main plugin's lines are made, not those of `parts`.
+- A quote in a line's text reaches LipGenerator as an apostrophe. The lip timing doesn't depend on it.
+- LipGenerator reads the line's text as the plugin has it, which is the subtitle. When the subtitle has digits and the
+  voice says words ("18,000 credits", spoken as "eighteen thousand credits"), the lip file is made from the digits
+  and comes out different from one made from the spoken words. For the closest lip match, write such lines in words.
 
 ## Setup checks in doctor
 

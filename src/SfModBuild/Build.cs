@@ -1,4 +1,4 @@
-// sf-mod-build build [sfmod.json]: the whole build in order: compile, plugin, pack, zip, check. It stops at the first
+// sf-mod-build build [sfmod.json]: the whole build in order: compile, plugin, voice (with a voice section), pack, zip, check. It stops at the first
 // step that doesn't exit 0 and returns that step's exit code. One RESULT line at the end names the step that stopped
 // it, or says the build is done.
 namespace SfModBuild;
@@ -6,25 +6,30 @@ namespace SfModBuild;
 internal static class Build
 {
     public const string Usage =
-        "usage: sf-mod-build build [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--masters-dir <folder>]... [--require-check] [--verbose] [--log <file>]\n" +
-        "  compile, plugin, pack, zip and check in order; stops at the first step that fails\n" +
+        "usage: sf-mod-build build [<sfmod.json or its folder>] [--game <game folder>] [--checker <exe>] [--masters-dir <folder>]... [--wwise <folder>] [--require-check] [--verbose] [--log <file>]\n" +
+        "  compile, plugin, voice (only with a voice section in sfmod.json), pack, zip and check in order; stops at the first step that fails\n" +
         "  the plugin step shows BuildKit's gap check result (--verbose shows the builder's other lines)\n" +
         "  the check step checks the PC zip (each zip, for a mod with parts); the Creations check runs on the creationsOut folder (default creations-out): sf-mod-check release <creationsOut folder> --profile creations";
 
-    public static readonly ArgSpec Spec = Check.Spec;
+    public static readonly ArgSpec Spec = new(Check.Spec.ValueOptions.Append("--wwise").ToArray(), Check.Spec.Flags, Check.Spec.MaxPositionals, Check.Spec.Repeatable);
 
     public static int Run(ParsedArgs p, IHostEnv env, TextWriter stdout)
     {
         // a wrong --masters-dir stops the build before it starts, not after the zip is made
         if (Check.MastersDirs(p, stdout) == null) return ExitCodes.BadInput;
-        var steps = new (string Name, Func<ParsedArgs, IHostEnv, TextWriter, int> Run)[]
+        var hasVoice = Common.LoadProject(p, TextWriter.Null, "")?.Voice != null;
+        var steps = new List<(string Name, Func<ParsedArgs, IHostEnv, TextWriter, int> Run)>
         {
             ("compile", Compile.Run),
             ("plugin", Plugin.Run),
+        };
+        if (hasVoice) steps.Add(("voice", Voice.Run));
+        steps.AddRange(new (string, Func<ParsedArgs, IHostEnv, TextWriter, int>)[]
+        {
             ("pack", Pack.Run),
             ("zip", Zip.Run),
             ("check", Check.Run),
-        };
+        });
         List<string> zipPaths = new();
         string? creationsNote = null;
         foreach (var (name, run) in steps)

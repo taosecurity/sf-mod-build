@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.6.0 (2026-11-27)
+
+### What's new
+
+- New `voice` command and `"voice"` section in `sfmod.json`: sf-mod-build now makes the game's voice files (`.wem`) and lip files (`.ffxanim`) for your plugin's new lines from one WAV per line, with no Creation Kit window. `build` runs it between `plugin` and `pack` when the project has a voice section, and `pack` puts the files in `<plugin> - Main.ba2`, uncompressed.
+- The voice step lists the lines with `sf-mod-check voice-lines` (sf-mod-check 0.21.0 or later). It converts the WAVs with your own Audiokinetic Wwise 2021.1 and the Creation Kit's own Wwise project and "Voice Conversion" setting, and makes the lip files with the Creation Kit's LipGenerator and FaceFX `ffxc`. sf-mod-build never ships Wwise.
+- A line with no WAV is a WARNING (it stays silent), unless `assets.source` already has its `.wem`. A WAV that matches no line is a WARNING too. A line whose WAV, text and face set haven't changed is skipped, so a rerun with nothing new needs no Wwise.
+- `voice.source` takes Starfield Voice Cloner's output folder as it is. `voice.faces` picks the face set per voice type (`female`, `male` or `none`); the default is the voice type's sex. `voice.wwiseProject` takes your own registered Wwise project.
+- `doctor` lists Wwise, LipGenerator and ffxc as notes, which aren't warnings, because only a project with a voice section needs them. `validate` shows the voice section.
+
+### Example
+
+```jsonc
+"voice": { "source": "Voice" }
+```
+
+```
+sf-mod-build plugin
+sf-mod-check voice-lines dist\MyMod.esm --out MyMod-lines.tsv
+(make Voice\npcfmyvoice\0001A2B3.wav and the other WAVs, for example with Voice Cloner)
+sf-mod-build build
+```
+
+A real run of the voice step alone, on a companion plugin with 564 voiced lines whose other lines keep the sound files the mod already ships (the plugin and voice type renamed; the WARNING list shortened here):
+
+```
+> sf-mod-build voice
+listing  the voiced lines of MyMod.esm with sf-mod-check.exe voice-lines
+WARNING  563 line(s) have no WAV in C:\Mods\MyMod\Voice, so they stay silent: npcfmyvoice\00007B22, ... and 558 more. Fix: ...
+lines    564 voiced line(s): 1 with a WAV (1 to make, 0 unchanged), 563 without
+wwise    converting 1 WAV(s) with C:\Audiokinetic\Wwise2021.1.14.8108\Authoring\x64\Release\bin\WwiseConsole.exe
+lips     making 1 lip file(s) with LipGenerator and ffxc
+RESULT: OK, 1 voice line(s) in C:\Mods\MyMod\.build\voice\data (1 made, 0 unchanged; 1 with a lip file)
+```
+
+The same Wwise, LipGenerator and ffxc steps, run by hand, made a line that played in real dialogue in game with the lips in time. This run's `.wem` is byte for byte that line's file.
+
+### Not yet
+
+- Xbox and PlayStation 5: a PC `.wem` plays silent there, so the voice section is refused with `"xbox": true`.
+- The lines of `parts` plugins.
+- A spoken text for the lip file that differs from the subtitle. LipGenerator reads the line's text as the plugin has it, so a subtitle with digits ("18,000 credits") gives a different lip file than the spoken words would; write such lines in words for the closest match.
+
 ## 0.5.2 (2026-11-27)
 
 ### What's new

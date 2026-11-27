@@ -1,6 +1,6 @@
 # AGENTS.md: sf-mod-build for AI assistants
 
-Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.5.2. The README has the
+Plain steps for an AI assistant helping someone build a Starfield mod with sf-mod-build 0.6.0. The README has the
 background; this file has what to run.
 
 ## 1. What it is for
@@ -27,7 +27,7 @@ background; this file has what to run.
    Versions before it was renamed were called sfmodcheck (`sfmodcheck.exe`), and sf-mod-build finds either name.
    Put it on PATH or pass it with `--checker`.
 5. The starter project's builder pins `Taosecurity.Starfield.BuildKit` `[0.6.0]` and `Mutagen.Bethesda.Starfield`
-   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.5.2 was tested with BuildKit 0.6.0;
+   `[0.54.4]` from nuget.org (the first build downloads them). sf-mod-build 0.6.0 was tested with BuildKit 0.6.0;
    don't change the pin unless the person asks.
 
 ## 3. Install
@@ -78,7 +78,7 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 
 - Make a new mod: `dotnet new sfmod -n MyMod --prefix MYM --mod-author "Your Name"` then `cd MyMod`.
 - Check the project file: `sf-mod-build validate`
-- Build everything (compile, plugin, pack, zip, check): `sf-mod-build build`. The plugin step shows BuildKit's gap check
+- Build everything (compile, plugin, voice when the project has a voice section, pack, zip, check): `sf-mod-build build`. The plugin step shows BuildKit's gap check
   result (`gap check: RESULT: OK ...`, its ERROR lines, or `gap check: NOT RUN ...`); the other builder lines need
   `--verbose`. The `check` step checks the PC zips only. The Creations check runs on the creations-out folder instead
   (`"xbox": true` makes it): `sf-mod-check release creations-out --profile creations` (or the folder `"creationsOut"` names), which `build` prints at the end
@@ -108,6 +108,15 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   list, `{ "suffix": "Voices", "source": "Voices", "compression": "none" }` (a folder laid out like Data, packed
   uncompressed so the `.wem` files play) or `{ "suffix": "Textures", "file": "Original/MyMod - Textures.ba2" }`
   (copied as it is). pack makes `<Plugin> - <suffix>.ba2` in dist and zip ships it. Not with `"xbox": true`.
+- New voice lines from WAVs (PC only): add `"voice": { "source": "Voice" }` with the WAVs in
+  `Voice\<voice type>\<FILENAME>.wav` (or point `source` at Starfield Voice Cloner's output folder), then
+  `sf-mod-build build`. The voice step runs `sf-mod-check voice-lines` (0.21.0 or later), the person's own Wwise 2021.1
+  (`--wwise <folder>`, else `WWISEROOT`, else `<drive>:\Audiokinetic\Wwise2021.1.*`) and the Creation Kit's LipGenerator and
+  ffxc, and pack puts the `.wem` and `.ffxanim` files in Main, uncompressed. To get the line list for the voice tool
+  first: `sf-mod-build plugin`, then `sf-mod-check voice-lines dist\<Plugin>.esm --out lines.tsv`. Never install
+  Wwise for the person or accept its license for them: they install it with the Audiokinetic Launcher in their own
+  window and register the mod as a project there. LipGenerator reads each line's text as the plugin has it (the
+  subtitle), so a subtitle with digits where the voice says words gets a looser lip match; suggest words.
 - A builder that writes more than one plugin: list the others in `parts`, `[{ "plugin": "MyMod-Extra.esm",
   "scripts": { "namespaces": ["MYMX"] } }]` (scripts optional). Each part's scripts go into `<part plugin> - Main.ba2`,
   and each part gets its own zip, `<name>-<Part>-<version>.zip` (`MyMod-Extra-0.1.0.zip`), beside the main zip.
@@ -157,6 +166,12 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   `builder.prebuilt`, a part with scripts with `"xbox": true`, and (with `zip.split` on) two zips with one name
   and a `zip.archives` name that starts with no plugin's name.
 - Optional `zip.split` (default `true`): with `parts`, one zip per plugin; `false` keeps one zip for all of them.
+- Optional `voice`: `{ "source", "faces", "out", "wwiseProject", "conversion" }`. `source` (required) is the WAV
+  folder (only read); `faces` maps a voice type EditorID to `"female"`, `"male"` or `"none"` (default: the voice
+  type's sex from voice-lines; unknown sex gets no lip files and a WARNING); `out` (default `.build/voice`) must be
+  inside the mod's folder and apart from dist, stage, creations-out and every packed folder; `wwiseProject` is the
+  person's own `.wproj` (default: a copy of the Creation Kit's `Tools\wwise\Starfield` in `<out>\wwise`);
+  `conversion` defaults to `"Voice Conversion"`. Refused with `"xbox": true`.
 - The game folder (found by itself, or `--game`).
 - For `doctor`'s setup checks only: `StarfieldCustom.ini` in `Documents\My Games\Starfield` (or `--my-games`),
   `CreationKitCustom.ini` in the game folder, and `Data\Scripts\Source` (read, never written).
@@ -170,6 +185,11 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
   there (a folder or file the person keeps in dist) stops `plugin` with exit 2, naming each one, and nothing is
   deleted: ask the person to move it out of dist. After an update from 0.3.0 or earlier the first build may name
   the builder's own extra files this way once; they can be deleted.
+- With a voice section: `<voice.out>\lines.tsv` (the voice-lines list), `<voice.out>\cache.json` (what was made from
+  which WAV and text), `<voice.out>\wwise\` (the project copy), `<voice.out>\work\` (emptied on each run that makes
+  lines) and `<voice.out>\data\Sound\Voice\<Plugin>\<voice type>\<FILENAME>.wem` and `.ffxanim`, which pack puts in
+  `<dist>\<Plugin> - Main.ba2` (uncompressed). The voice step deletes a file in `<voice.out>\data` when no current
+  line with a WAV has it.
 - With loose textures: `<dist>\<Plugin> - Textures.ba2`. A mod with loose files but no scripts may have no Main
   archive. pack copies the loose files into `<stage>\pack\` first.
 - With `parts`: each part plugin in dist (written by the builder; `plugin` exits 1 when one is missing), and for a
@@ -230,8 +250,10 @@ Run these in the mod's folder (the one with `sfmod.json`), or pass that folder o
 - Never packs an assets folder that is in the game's folder or holds it, the mod's own folder, dist, stage,
   creations-out, the builder or a script source folder; validate refuses those.
 - doctor only reads the INI files and never writes them.
-- Doesn't convert art: `.tif`, `.fbx` and `.wav` are packed as they are (with a warning). Textures must already be
-  `.dds` and sounds `.wem`; the Creation Kit's own tools make those. A PC `.wem` is silent on Xbox and PlayStation 5.
+- Doesn't convert art: `.tif`, `.fbx` and `.wav` in `assets.source` are packed as they are (with a warning). Textures must already be
+  `.dds` and sounds `.wem`; the Creation Kit's own tools make those. The one exception is new voice lines: the
+  voice step converts the WAVs in `voice.source` with the person's own Wwise (never shipped or installed by
+  sf-mod-build). A PC `.wem` is silent on Xbox and PlayStation 5.
 - Ships no game files; uses the Creation Kit's own tools from the person's game folder.
 - `compile` and `pack` need Windows (the Creation Kit's tools are Windows programs). A `pack` with only ready
   archives to copy (`archives` entries with `file`, and no scripts or loose files) needs neither Archive2 nor the game.

@@ -53,6 +53,16 @@
 //       "checker": "path/to/sf-mod-check.exe",     default: sf-mod-check or sfmodcheck on PATH
 //       "required": false,                         true: a missing checker fails the build
 //       "args": []                                 extra options for the checker's release command
+//     },
+//     "voice": {                                   new voice lines from WAVs (leave out when unused; PC only, not with xbox)
+//       "source": "Voice",                         WAVs as <voice type>\<FILENAME>.wav (Voice Cloner's output works,
+//                                                  also with its Sound\Voice\<plugin>\ folders above them)
+//       "faces": { "npcfmyvoice": "female" },      the lip face set per voice type: female, male or none (default:
+//                                                  the voice type's sex from sf-mod-check voice-lines)
+//       "out": ".build/voice",                     where the voice step works and keeps the .wem and .ffxanim files
+//       "wwiseProject": "Wwise/Starfield",         your own Wwise project (a .wproj or its folder); default: a copy of
+//                                                  the Creation Kit's Tools\wwise\Starfield in out
+//       "conversion": "Voice Conversion"           the Wwise conversion setting (default Voice Conversion)
 //     }
 //   }
 //
@@ -105,7 +115,29 @@ internal sealed class SfModProject
     public ScriptsSection? Scripts { get; init; }
     public AssetsSection? Assets { get; init; }
     /// <summary>True when the build makes "&lt;plugin&gt; - Main.ba2": the mod has scripts or general loose files.</summary>
-    public bool HasMainArchive => Scripts != null || Assets is { General.Count: > 0 };
+    public bool HasMainArchive => Scripts != null || Assets is { General.Count: > 0 } || Voice is { Files.Count: > 0 };
+    /// <summary>True when Main holds sound or lip files (from the assets or the voice step), so it is packed uncompressed.</summary>
+    public bool UncompressedMain => Assets is { UncompressedMain: true } || Voice is { Files.Count: > 0 };
+    /// <summary>The voice section: new voice lines made from WAVs by the voice step, or null.</summary>
+    public VoiceSection? Voice { get; init; }
+
+    /// <summary>The voice section, with its paths made absolute.</summary>
+    public sealed class VoiceSection
+    {
+        /// <summary>The WAV folder as given.</summary>
+        public required string Source { get; init; }
+        /// <summary>The voice step's own folder: work files, the Wwise project copy, and data\ (laid out like Data).</summary>
+        public required string Out { get; init; }
+        /// <summary>out\data: the .wem and .ffxanim files the voice step made, which pack puts in Main.</summary>
+        public string Data => System.IO.Path.Combine(Out, "data");
+        /// <summary>Face set per voice type (lower case): "female", "male" or "none".</summary>
+        public required IReadOnlyDictionary<string, string> Faces { get; init; }
+        /// <summary>The modder's own .wproj, or null to use a copy of the Creation Kit's project.</summary>
+        public string? WwiseProject { get; init; }
+        public required string Conversion { get; init; }
+        /// <summary>The files in out\data when the project was loaded, for pack.</summary>
+        public required IReadOnlyList<AssetFile> Files { get; init; }
+    }
     /// <summary>True when the build makes "&lt;plugin&gt; - Textures.ba2": the mod has loose .dds files.</summary>
     public bool HasTexturesArchive => Assets is { Textures.Count: > 0 };
     /// <summary>The archives pack puts in dist, in the order it makes them: Main and Textures from the scripts and
@@ -215,7 +247,9 @@ internal sealed class SfModProject
 
     public const string FileName = "sfmod.json";
 
-    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "archives", "parts", "zip", "check" };
+    static readonly string[] TopFields = { "$schema", "name", "version", "plugin", "scripts", "builder", "steps", "dist", "stage", "xbox", "creationsOut", "assets", "archives", "parts", "zip", "check", "voice" };
+    static readonly string[] VoiceFields = { "source", "faces", "out", "wwiseProject", "conversion" };
+    public static readonly string[] FaceKinds = { "female", "male", "none" };
     static readonly string[] PartFields = { "plugin", "scripts", "zipPart" };
     static readonly string[] ArchiveFields = { "suffix", "source", "file", "compression", "format" };
     static readonly string[] StepsFields = { "afterPlugin", "afterPack" };
@@ -378,7 +412,12 @@ internal sealed class SfModProject
             var packed = new List<(string, string)>();
             if (assets?.Source != null) packed.Add(("assets.source", assets.Source));
             if (assets?.XboxTextures != null) packed.Add(("assets.xboxTextures", assets.XboxTextures));
-            var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 }, assets is { Textures.Count: > 0 },
+            var voiceOk = true;
+            VoiceSection? voice = null;
+            if (dist != null && stage != null && creationsOut != null)
+                voice = Voice(root, xbox, new List<(string, string)> { ("dist", dist), ("stage", stage), ("creationsOut", creationsOut) }, packed, out voiceOk);
+            if (voice != null) packed.Add(("voice.out", voice.Out));
+            var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 } || voice is { Files.Count: > 0 }, assets is { Textures.Count: > 0 },
                 dist, stage, creationsOut, packed);
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
             // creationsOut inside dist: the next build's plugin step empties dist and would delete the user's files there
@@ -396,7 +435,7 @@ internal sealed class SfModProject
             var (checker, checkRequired, checkArgs) = Check(root);
 
             if (plugin == null || name == null || version == null || builder == null || steps == null || dist == null
-                || stage == null || creationsOut == null || parts == null || !assetsOk || extra == null || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
+                || stage == null || creationsOut == null || parts == null || !assetsOk || !voiceOk || extra == null || zipName == null || zipFolder == null || zipFiles == null || zipArchives == null || checkArgs == null)
                 return null;
             var p = new SfModProject
             {
@@ -404,7 +443,7 @@ internal sealed class SfModProject
                 BuilderProject = builder.Project, BuilderCommand = builder.Command, BuilderPrebuilt = builder.Prebuilt,
                 BuilderArgs = builder.Args, AfterPlugin = steps.Value.AfterPlugin, AfterPack = steps.Value.AfterPack, Dist = dist, Stage = stage, Xbox = xbox,
                 CreationsOut = creationsOut, Parts = parts, Archives = extra, ZipName = zipName, ZipFolder = zipFolder, ZipFiles = zipFiles, ZipArchives = zipArchives,
-                Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs, ZipSplit = zipSplit,
+                Checker = checker, CheckRequired = checkRequired, CheckArgs = checkArgs, ZipSplit = zipSplit, Voice = voice,
             };
             foreach (var a in zipArchives)
                 if (extra.Any(x => string.Equals(x.Name, a, StringComparison.OrdinalIgnoreCase)))
@@ -730,6 +769,95 @@ internal sealed class SfModProject
             ok = problems.Count(x => !x.IsWarning) == before;
             if (source == null) return null;
             return new SfModProject.AssetsSection { Source = source, XboxTextures = xboxFolder, General = general, Textures = textures, XboxTextureFiles = xboxFiles };
+        }
+
+        /// <summary>The voice section: the WAV folder (only read, so it may be anywhere), the voice step's own out
+        /// folder (inside the mod, apart from every other output and packed folder), the face sets, the Wwise project
+        /// and conversion. ok is false when it has a PROBLEM.</summary>
+        SfModProject.VoiceSection? Voice(JsonElement root, bool xbox, List<(string Name, string Path)> outputs, List<(string Field, string Path)> packed, out bool ok)
+        {
+            ok = true;
+            if (!root.TryGetProperty("voice", out var v) || v.ValueKind == JsonValueKind.Null) return null;
+            var before = problems.Count(x => !x.IsWarning);
+            if (v.ValueKind != JsonValueKind.Object)
+            {
+                Error("voice", $"it is a {Kind(v)}, not an object.", "write it like \"voice\": { \"source\": \"Voice\" }, or leave it out when the mod has no new voice lines.");
+                ok = false;
+                return null;
+            }
+            Fields(v, "voice.", VoiceFields);
+            if (xbox)
+                Error("voice", "it can't be used with \"xbox\": true in this version: the voice step makes PC .wem files, which play silent on Xbox and PlayStation 5.",
+                    "leave \"xbox\" off for this mod, or make the console versions of the lines in the Creation Kit.");
+            string? source = null;
+            if (!v.TryGetProperty("source", out var sv) || sv.ValueKind == JsonValueKind.Null)
+                Error("voice.source", "it is missing.", "add \"source\": \"Voice\" (the folder of WAVs, one folder per voice type).");
+            else source = Folder(v, "source", "Voice", "voice.source");
+            if (source != null && !Directory.Exists(source))
+            {
+                Error("voice.source", $"the folder {source} isn't there.", "give the folder that holds the WAVs (<voice type>\\<FILENAME>.wav), relative to sfmod.json.");
+                source = null;
+            }
+            var output = Folder(v, "out", Path.Combine(".build", "voice"), "voice.out");
+            if (output != null)
+            {
+                if (SamePath(output, folder) || !IsUnder(output, folder))
+                {
+                    Error("voice.out", $"{output} isn't a folder of its own inside the mod's folder {folder}, and the voice step deletes the files it made there earlier.", "give a folder inside the mod's folder, for example \".build/voice\".");
+                    output = null;
+                }
+                else
+                    foreach (var (name, path) in outputs.Concat(packed))
+                        if (SamePath(output, path) || IsUnder(output, path) || IsUnder(path, output))
+                        {
+                            Error("voice.out", $"{output} is, holds or is inside {name} ({path}).", "give the voice step a folder of its own, for example \".build/voice\".");
+                            output = null;
+                            break;
+                        }
+            }
+            if (source != null && output != null && (SamePath(source, output) || IsUnder(source, output) || IsUnder(output, source)))
+            {
+                Error("voice.source", $"{source} is, holds or is inside voice.out ({output}), where the voice step deletes and replaces its own files.", "keep the WAVs in a folder of their own, for example \"Voice\".");
+                source = null;
+            }
+            var faces = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (v.TryGetProperty("faces", out var fv) && fv.ValueKind != JsonValueKind.Null)
+            {
+                if (fv.ValueKind != JsonValueKind.Object)
+                    Error("voice.faces", $"it is a {Kind(fv)}, not an object.", "write it like \"faces\": { \"npcfmyvoice\": \"female\" }.");
+                else
+                    foreach (var f in fv.EnumerateObject())
+                    {
+                        var value = f.Value.ValueKind == JsonValueKind.String ? f.Value.GetString()!.Trim().ToLowerInvariant() : null;
+                        if (!Regex.IsMatch(f.Name, "^[A-Za-z0-9_]+$"))
+                            Error($"voice.faces.{f.Name}", "it isn't a voice type EditorID (letters, digits and _ only).", "give the voice type's EditorID, for example \"npcfmyvoice\".");
+                        else if (value == null || !FaceKinds.Contains(value))
+                            Error($"voice.faces.{f.Name}", "it isn't \"female\", \"male\" or \"none\".", "write \"female\" or \"male\" for the face set the lip sync uses, or \"none\" for a voice with no lip file (a robot).");
+                        else if (!faces.TryAdd(f.Name, value))
+                            Error($"voice.faces.{f.Name}", "this voice type is given twice.", "keep one of them.");
+                    }
+            }
+            string? wproj = null;
+            if (String(v, "wwiseProject", false, "\"Wwise/Starfield\"", "voice.wwiseProject") is { } wp && PathOf(wp, "voice.wwiseProject") is { } wfull)
+            {
+                if (Directory.Exists(wfull))
+                {
+                    var found = Directory.GetFiles(wfull, "*.wproj");
+                    if (found.Length == 1) wproj = found[0];
+                    else Error("voice.wwiseProject", found.Length == 0 ? $"{wfull} holds no .wproj file." : $"{wfull} holds {found.Length} .wproj files.", "give the folder that holds your Wwise project's one .wproj file, or the .wproj itself.");
+                }
+                else if (System.IO.File.Exists(wfull) && wfull.EndsWith(".wproj", StringComparison.OrdinalIgnoreCase)) wproj = wfull;
+                else Error("voice.wwiseProject", $"{wfull} isn't a .wproj file or a folder holding one.", "give your own copy of the Starfield Wwise project, or leave it out to use a copy of the Creation Kit's.");
+            }
+            var conversion = String(v, "conversion", false, "\"Voice Conversion\"", "voice.conversion") ?? "Voice Conversion";
+            if (conversion.IndexOfAny(new[] { '"', '<', '>', '&' }) >= 0 || conversion.Any(char.IsControl))
+                Error("voice.conversion", $"\"{conversion}\" isn't a conversion setting name.", "give the name of a Wwise conversion setting in the project, such as \"Voice Conversion\".");
+            var files = new List<SfModProject.AssetFile>();
+            if (output != null && Directory.Exists(Path.Combine(output, "data")))
+                files = ScanAssets(Path.Combine(output, "data"), "voice.out");
+            ok = problems.Count(x => !x.IsWarning) == before;
+            if (!ok || source == null || output == null) return null;
+            return new SfModProject.VoiceSection { Source = source, Out = output, Faces = faces, WwiseProject = wproj, Conversion = conversion, Files = files };
         }
 
         /// <summary>A PROBLEM for each pair of files whose archive paths differ only in case (a case-sensitive folder,

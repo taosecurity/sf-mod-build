@@ -172,6 +172,11 @@ internal static class Pack
             if (project.Assets.XboxTextures != null) keep.Add(project.Assets.XboxTextures);
         }
         keep.AddRange(project.Archives.Where(a => a.Source != null).Select(a => a.Source!));
+        if (project.Voice != null)
+        {
+            keep.Add(project.Voice.Source);
+            keep.Add(project.Voice.Out);
+        }
         return keep;
     }
 
@@ -245,8 +250,9 @@ internal static class Pack
         // Where each archive's files come from
         string? mainSource = null, mainRoot = null, texSource = null, xboxTexSource = null;
         var assets = project.Assets;
-        var staged = assets != null && (assets.General.Count > 0 || assets.Textures.Count > 0);
-        if (project.HasMainArchive && !(assets is { General.Count: > 0 }))
+        var voiceFiles = project.Voice?.Files ?? Array.Empty<SfModProject.AssetFile>();
+        var staged = (assets != null && (assets.General.Count > 0 || assets.Textures.Count > 0)) || voiceFiles.Count > 0;
+        if (project.HasMainArchive && !(assets is { General.Count: > 0 }) && voiceFiles.Count == 0)
         {
             mainRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(project.Stage));
             mainSource = Path.Combine(mainRoot, "Scripts");
@@ -269,7 +275,7 @@ internal static class Pack
             }
             if (stagedMain != null) mainSource = mainRoot = stagedMain;
         }
-        var mainCompression = assets is { UncompressedMain: true } ? "None" : null;
+        var mainCompression = project.UncompressedMain ? "None" : null;
         if (mainCompression != null)
             stdout.WriteLine($"note     \"{project.Ba2Name}\" holds .wem or .ffxanim files, which play silent when stored compressed, so it is packed with -compression=None");
 
@@ -437,10 +443,11 @@ internal static class Pack
     static string? Stage(SfModProject project, string pack, out string? main, out string? textures, out string? xboxTextures, TextWriter stdout)
     {
         main = textures = xboxTextures = null;
-        var assets = project.Assets!;
+        var assets = project.Assets ?? new SfModProject.AssetsSection { Source = "", General = Array.Empty<SfModProject.AssetFile>(), Textures = Array.Empty<SfModProject.AssetFile>(), XboxTextureFiles = Array.Empty<SfModProject.AssetFile>() };
+        var voiceFiles = project.Voice?.Files ?? Array.Empty<SfModProject.AssetFile>();
         try
         {
-            if (assets.General.Count > 0)
+            if (assets.General.Count > 0 || voiceFiles.Count > 0)
             {
                 main = Path.Combine(pack, "main");
                 // Paths compare without case: the game and Windows treat Meshes\Box.nif and meshes\box.nif as one file
@@ -461,6 +468,14 @@ internal static class Pack
                         return other.Script
                             ? $"{f.Full} in assets.source would be {f.Relative} in the archive, which is also the compiled script {other.Full}. Fix: remove the loose copy from the assets folder; the script is compiled from its source"
                             : CaseTwin("assets.source", f.Full, other.Full);
+                    Copy(f.Full, Path.Combine(main, f.Relative));
+                    taken[f.Relative] = (f.Full, false);
+                }
+                // the voice step's .wem and .ffxanim files; one that assets.source also has would ship twice
+                foreach (var f in voiceFiles)
+                {
+                    if (taken.TryGetValue(f.Relative, out var other))
+                        return $"{f.Full}, made by the voice step, would be {f.Relative} in the archive, which is also {other.Full}. Fix: remove the loose copy from the assets folder (or the WAV from voice.source), so the line has one sound file";
                     Copy(f.Full, Path.Combine(main, f.Relative));
                     taken[f.Relative] = (f.Full, false);
                 }
@@ -486,7 +501,10 @@ internal static class Pack
         {
             return $"the loose files couldn't be copied into {pack}: {e.Message}. Fix: check that every file in the assets folder is there and readable, and run again";
         }
-        stdout.WriteLine($"staged   {assets.General.Count} general and {assets.Textures.Count} texture file(s) from {assets.Source}");
+        if (project.Assets != null)
+            stdout.WriteLine($"staged   {assets.General.Count} general and {assets.Textures.Count} texture file(s) from {assets.Source}");
+        if (voiceFiles.Count > 0)
+            stdout.WriteLine($"staged   {voiceFiles.Count} voice and lip file(s) from {project.Voice!.Data}");
         return null;
     }
 

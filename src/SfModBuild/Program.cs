@@ -3,6 +3,7 @@
 //   sf-mod-build validate [sfmod.json] [--verbose] [--log <file>]
 //   sf-mod-build compile [sfmod.json] [--game <folder>] [--verbose] [--log <file>]
 //   sf-mod-build plugin [sfmod.json] [--game <folder>] [--verbose] [--log <file>]
+//   sf-mod-build voice [sfmod.json] [--game <folder>] [--checker <exe>] [--wwise <folder>] [--masters-dir <folder>]... [--verbose] [--log <file>]
 //   sf-mod-build pack [sfmod.json] [--game <folder>] [--verbose] [--log <file>]
 //   sf-mod-build zip [sfmod.json] [--verbose] [--log <file>]
 //   sf-mod-build check [sfmod.json] [--game <folder>] [--checker <exe>] [--require-check] [--verbose] [--log <file>]
@@ -37,6 +38,9 @@ namespace SfModBuild
             "  plugin      make the plugin in dist with the mod's builder: a .NET project (such as a Mutagen builder),\n" +
             "              any command (builder.command), or a ready plugin copied in (builder.prebuilt), and check\n" +
             "              the project's other plugins (parts) are there; then the project's steps.afterPlugin commands\n" +
+            "  voice       make the .wem voice files and .ffxanim lip files of the plugin's new lines from WAVs (the\n" +
+            "              voice section): sf-mod-check voice-lines, your own Wwise 2021.1, the Creation Kit's\n" +
+            "              LipGenerator and ffxc; pack puts them in Main. PC only\n" +
             "  pack        pack the compiled scripts and loose files into the BA2s with the Creation Kit's Archive2\n" +
             "              (Main and Textures, and the _xbox ones for Creations), pack each part's scripts into\n" +
             "              \"<part> - Main.ba2\", make the project's archives list (packed from a folder, or a\n" +
@@ -44,7 +48,7 @@ namespace SfModBuild
             "  zip         write the mod's zip reproducibly (same files, same bytes); a mod with parts gets one zip\n" +
             "              per plugin\n" +
             "  check       run sf-mod-check (or sfmodcheck) release on the zip (on each zip, for a mod with parts)\n" +
-            "  build       compile, plugin, pack, zip and check in order\n" +
+            "  build       compile, plugin, voice (with a voice section), pack, zip and check in order\n" +
             "options for every command:\n" +
             "  --verbose       troubleshooting log on stderr (lines start \"log: \")\n" +
             "  --log <file>    the same log, with times, written to a file\n" +
@@ -76,6 +80,7 @@ namespace SfModBuild
                         ? Refuse(why)
                         : RunCommand(args, Compile.Spec, Compile.Usage, p => Compile.Run(p, env, stdout), stdout),
                     "plugin" => RunCommand(args, Plugin.Spec, Plugin.Usage, p => Plugin.Run(p, env, stdout), stdout),
+                    "voice" => RunCommand(args, Voice.Spec, Voice.Usage, p => Voice.Run(p, env, stdout), stdout),
                     "pack" => RunCommand(args, Pack.Spec, Pack.Usage, p => Pack.Run(p, env, stdout), stdout),
                     "zip" => RunCommand(args, Zip.Spec, Zip.Usage, p => Zip.Run(p, env, stdout), stdout),
                     "check" => RunCommand(args, Check.Spec, Check.Usage, p => Check.Run(p, env, stdout), stdout),
