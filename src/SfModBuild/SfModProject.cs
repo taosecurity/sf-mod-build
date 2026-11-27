@@ -419,12 +419,14 @@ internal sealed class SfModProject
             if (voice != null) packed.Add(("voice.out", voice.Out));
             var extra = Archives(root, plugin, xbox, scripts != null || assets is { General.Count: > 0 } || voice is { Files.Count: > 0 }, assets is { Textures.Count: > 0 },
                 dist, stage, creationsOut, packed);
-            // the WAVs must not sit in a folder pack ships as it is (assets.source, assets.xboxTextures, an archives source)
+            // the WAV folder must not overlap a folder a build empties (dist, stage, creationsOut) or one pack ships as it
+            // is (assets.source, assets.xboxTextures, an archives source), either way round: the WAVs would be deleted
+            // or shipped. voice.out is checked in Voice().
             if (voice != null)
-                foreach (var (field, path) in packed)
-                    if (field != "voice.out" && (SamePath(voice.Source, path) || IsUnder(voice.Source, path)))
+                foreach (var (field, path) in new List<(string, string)> { ("dist", dist!), ("stage", stage!), ("creationsOut", creationsOut!) }.Concat(packed))
+                    if (field != "voice.out" && (SamePath(voice.Source, path) || IsUnder(voice.Source, path) || IsUnder(path, voice.Source)))
                     {
-                        Error("voice.source", $"{voice.Source} is or is inside {field} ({path}), so pack would put the WAVs into the archive as they are.", "keep the WAVs in a folder of their own, for example \"Voice\".");
+                        Error("voice.source", $"{voice.Source} is, holds or is inside {field} ({path}), which a build empties or packs as it is, so the WAVs could be deleted or shipped.", "keep the WAVs in a folder of their own, apart from the others, for example \"Voice\".");
                         break;
                     }
             var (zipName, zipFolder, zipFiles, zipArchives) = Zip(root, name, plugin, version);
@@ -806,15 +808,6 @@ internal sealed class SfModProject
                 Error("voice.source", $"the folder {source} isn't there.", "give the folder that holds the WAVs (<voice type>\\<FILENAME>.wav), relative to sfmod.json.");
                 source = null;
             }
-            // the WAVs must not sit where a build empties folders (the packed folders are checked after the archives)
-            if (source != null)
-                foreach (var (name, path) in outputs)
-                    if (SamePath(source, path) || IsUnder(source, path))
-                    {
-                        Error("voice.source", $"{source} is or is inside {name} ({path}), which a build empties, so the WAVs would be deleted.", "keep the WAVs in a folder of their own, for example \"Voice\".");
-                        source = null;
-                        break;
-                    }
             var output = Folder(v, "out", Path.Combine(".build", "voice"), "voice.out");
             if (output != null)
             {

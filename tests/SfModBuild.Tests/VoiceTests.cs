@@ -331,9 +331,12 @@ public class VoiceTests
     [InlineData("\"voice\": { \"source\": \"Voice\", \"faces\": { \"npcfa\": \"robot\" } }, \"x\": 1,", "isn't \"female\", \"male\" or \"none\"")]
     [InlineData("\"voice\": { \"source\": \"NoSuchFolder\" }, \"x\": 1,", "isn't there")]
     [InlineData("\"voice\": { \"source\": \"Voice\", \"wwiseProject\": \"Voice\" }, \"x\": 1,", "holds no .wproj")]
-    [InlineData("\"assets\": { \"source\": \"Voice\" },", "put the WAVs into the archive")]
-    [InlineData("\"stage\": \"Voice\",", "the WAVs would be deleted")]
-    [InlineData("\"archives\": [ { \"suffix\": \"Voices\", \"source\": \"Voice\" } ],", "put the WAVs into the archive")]
+    [InlineData("\"assets\": { \"source\": \"Voice\" },", "could be deleted or shipped")]
+    [InlineData("\"assets\": { \"source\": \"Voice/npcfa\" },", "could be deleted or shipped")]
+    [InlineData("\"stage\": \"Voice\",", "could be deleted or shipped")]
+    [InlineData("\"stage\": \"Voice/npcfa\",", "could be deleted or shipped")]
+    [InlineData("\"archives\": [ { \"suffix\": \"Voices\", \"source\": \"Voice\" } ],", "could be deleted or shipped")]
+    [InlineData("\"archives\": [ { \"suffix\": \"Voices\", \"source\": \"Voice/npcfa\" } ],", "could be deleted or shipped")]
     public void BadVoiceSectionsAreProblems(string insert, string expected)
     {
         using var t = new TempDir();
@@ -346,19 +349,6 @@ public class VoiceTests
         var problems = new List<ProjectProblem>();
         Assert.Null(SfModProject.Load(t.File("sfmod.json", json), problems));
         Assert.Contains(problems, x => !x.IsWarning && (x.Problem + x.Field).Contains(expected));
-    }
-
-    [Fact]
-    public void AVoiceSourceThatOnlyHoldsAPackedFolderIsAllowed()
-    {
-        using var t = new TempDir();
-        t.File(Path.Combine("Original", "MyMod.esm"));
-        t.File(Path.Combine("Voice", "npcfa", "00000001.wav"));
-        t.File(Path.Combine("Voice", "Assets", "meshes", "a.nif"));
-        var json = Json.Replace("\"voice\"", "\"assets\": { \"source\": \"Voice/Assets\" }, \"voice\"");
-        var problems = new List<ProjectProblem>();
-        Assert.NotNull(SfModProject.Load(t.File("sfmod.json", json), problems));
-        Assert.DoesNotContain(problems, x => !x.IsWarning);
     }
 
     [Fact]
