@@ -254,7 +254,8 @@ Before the builder runs, `plugin` deletes what earlier builds made in dist: the 
 `.sf-mod-build-made` list (what the builder, sf-mod-build and your steps wrote last time), the mod's own plugins
 and archives (the names sfmod.json gives: the plugin, each part, `<plugin> - Main.ba2` and the other archives
 `pack` makes, the `archives` list and `zip.archives`), and half-written zips. Zips stay, and so does a
-`zip.folder` inside dist. When dist holds anything else, such as a folder of old copies, your notes or a backup
+`zip.folder` inside dist. `creationsOut` can't be dist or inside it, and `zip.folder` can't be stage or inside it: `validate` and
+every build refuse that with exit 2, because the next build empties those folders. When dist holds anything else, such as a folder of old copies, your notes or a backup
 plugin like `MyMod-backup.esm`, `plugin` deletes nothing and stops with exit 2, naming each one:
 
     > sf-mod-build plugin
@@ -309,7 +310,7 @@ allowed.
   "dist": "dist",                              // the plugin and the BA2 go here (default dist)
   "stage": ".build/stage",                     // compiled scripts go here (default .build/stage)
   "xbox": false,                               // also make the "_xbox" archives in creations-out
-  "creationsOut": "creations-out",             // where the Creations upload set goes (default creations-out)
+  "creationsOut": "creations-out",             // where the Creations upload set goes (default creations-out; not inside dist)
   "assets": {                                  // leave out when the mod has no loose files
     "source": "Assets",                        // a folder laid out like Data: Meshes\, Materials\, Textures\ ...
     "xboxTextures": "Assets-xbox"              // optional: Xbox-format .dds files for the _xbox texture archive

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.2 (unreleased)
+
+### What's new
+
+- **A second build can no longer delete files you keep in `creationsOut`.** Before, a `creationsOut` folder inside dist was emptied by the next build's plugin step, your own files in it included. Now `validate` and every build stop with exit 2 when `creationsOut` is dist or inside dist, and the plugin step never deletes the `creationsOut` folder. The same check refuses a `zip.folder` that is the stage folder or inside it, because every build empties stage and the zips would go with it.
+- The default settings are not affected: `creations-out` and the default `zip.folder` (the mod's own folder) are outside dist and stage.
+
+### Example
+
+A mod whose sfmod.json says `"creationsOut": "dist/creations"` now stops before it can lose anything:
+
+```
+> sf-mod-build validate
+PROBLEM: C:\Mods\MyMod\sfmod.json: creationsOut: it is inside dist (C:\Mods\MyMod\dist), which the plugin step empties on every build, files you added included. Fix: use a folder of its own, for example "creations-out".
+RESULT: 1 PROBLEM(S) in C:\Mods\MyMod\sfmod.json; fix them and run validate again
+```
+
+Change it to `"creationsOut": "creations-out"` and run again.
+
 ## 0.5.1 (2026-11-25)
 
 ### What's new
